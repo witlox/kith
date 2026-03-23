@@ -1,1 +1,5 @@
-// kith-daemon: per-machine daemon. Stub — implementation pending.
+pub mod audit;
+pub mod commit;
+pub mod drift;
+pub mod exec;
+pub mod policy;
