@@ -18,6 +18,8 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 tokio-stream = "0.1"
+hostname = "0.4"
+tracing-subscriber = { workspace = true }
 
 [build-dependencies]
 tonic-build = { workspace = true }

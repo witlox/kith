@@ -5,10 +5,15 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+# Enable container-based tests (requires Docker)
+containers = ["testcontainers"]
+
 [dependencies]
 kith-common = { path = "../kith-common" }
 kith-daemon = { path = "../kith-daemon" }
 kith-shell = { path = "../kith-shell" }
+kith-mesh = { path = "../kith-mesh" }
 kith-sync = { path = "../kith-sync" }
 kith-state = { path = "../kith-state" }
 tokio = { workspace = true }
@@ -17,3 +22,4 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 tokio-stream = "0.1"
+testcontainers = { version = "0.23", optional = true }
