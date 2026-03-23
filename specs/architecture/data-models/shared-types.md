@@ -58,8 +58,10 @@ pub struct DriftVector {
 }
 
 impl DriftVector {
-    /// Weighted magnitude.
-    pub fn magnitude(&self, weights: &DriftWeights) -> f64 {
+    /// Weighted squared magnitude. Returns sum of squared weighted dimensions.
+    /// Not Euclidean norm (no sqrt) — consistent with pact, cheaper to compute,
+    /// fine for comparison (ordering is preserved). See adversary F-05.
+    pub fn magnitude_sq(&self, weights: &DriftWeights) -> f64 {
         (self.files * weights.files).powi(2)
             + (self.services * weights.services).powi(2)
             + (self.network * weights.network).powi(2)

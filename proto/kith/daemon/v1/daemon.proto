@@ -14,17 +14,16 @@ service KithDaemon {
   rpc Capabilities(CapabilitiesRequest) returns (CapabilityReport);
 }
 
-message ExecRequest {
-  string command = 1;
-  string identity_token = 2;
-  ExecScope scope = 3;
+// Ed25519 signed credential (ADR-006). Scope is server-determined.
+message Credential {
+  bytes public_key = 1;        // Ed25519 public key (32 bytes)
+  int64 timestamp_unix_ms = 2; // milliseconds since epoch
+  bytes signature = 3;         // Ed25519 signature over (pubkey || timestamp || request hash)
 }
 
-enum ExecScope {
-  EXEC_SCOPE_UNSPECIFIED = 0;
-  EXEC_SCOPE_READ_ONLY = 1;
-  EXEC_SCOPE_SANDBOXED = 2;
-  EXEC_SCOPE_FULL = 3;
+message ExecRequest {
+  string command = 1;
+  Credential credential = 2;
 }
 
 message ExecOutput {
@@ -37,7 +36,7 @@ message ExecOutput {
 }
 
 message QueryRequest {
-  string identity_token = 1;
+  Credential credential = 1;
   QueryType query_type = 2;
 }
 
@@ -59,7 +58,7 @@ message StateResponse {
 
 message ApplyRequest {
   string command = 1;
-  string identity_token = 2;
+  Credential credential = 2;
   uint32 commit_window_seconds = 3;
 }
 
@@ -71,7 +70,7 @@ message PendingChange {
 
 message CommitRequest {
   string change_id = 1;
-  string identity_token = 2;
+  Credential credential = 2;
 }
 
 message CommitResult {
@@ -81,7 +80,7 @@ message CommitResult {
 
 message RollbackRequest {
   string change_id = 1;
-  string identity_token = 2;
+  Credential credential = 2;
 }
 
 message RollbackResult {
@@ -90,7 +89,7 @@ message RollbackResult {
 }
 
 message EventsRequest {
-  string identity_token = 1;
+  Credential credential = 1;
   google.protobuf.Timestamp since = 2;
   repeated string event_types = 3;
 }
@@ -106,7 +105,7 @@ message Event {
 }
 
 message CapabilitiesRequest {
-  string identity_token = 1;
+  Credential credential = 1;
 }
 
 message CapabilityReport {

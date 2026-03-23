@@ -36,3 +36,20 @@ Feature: Commit windows and transactional changes
     Given pending changes exist for "file-a.py" and "file-b.py"
     When the user types "commit"
     Then both are committed atomically
+
+  Scenario: Local file change on macOS uses copy-based snapshot
+    Given kith shell is running on macOS
+    And overlayfs is not available
+    When the agent edits "/Users/pim/project/config.toml"
+    Then the original is copied to ".kith-backup/config.toml"
+    And the edit is applied to the original file
+    And the change is marked "pending"
+    When the user types "rollback"
+    Then the backup is restored to the original path
+    And the backup is removed
+
+  Scenario: macOS commit removes backup
+    Given a pending change on macOS with a copy-based snapshot
+    When the user types "commit"
+    Then the backup is removed
+    And the edited file remains in place

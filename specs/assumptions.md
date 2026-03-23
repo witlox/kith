@@ -26,6 +26,12 @@ Explicit, falsifiable. Validate before the relevant component is production-read
 
 **ASM-STO-2: Embeddings cluster operational data effectively.** Validation: 1 week real data, 50 queries, recall@5 >70%.
 
+## Clock Assumptions
+
+**ASM-CLK-1: Mesh members have NTP-synced clocks.** Clock skew <30 seconds. Validation: check NTP sync status on mesh join, warn if skew exceeds 5 seconds.
+
+**ASM-CLK-2: Commit window expiry uses daemon-local clock only.** Never compared across machines. The daemon that opened the window tracks its expiry. No cross-machine clock dependency.
+
 ## Platform Assumptions
 
 **ASM-PLT-1: macOS supports agent-side operation.** PTY, WireGuard, Nostr, cr-sqlite, vector index. Validation: build and test on macOS.

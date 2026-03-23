@@ -38,6 +38,6 @@
 
 **INV-DAT-1: Events are append-only.** Add-wins OR-Set semantics. No modification.
 
-**INV-DAT-2: Content stays at origin.** CRDT syncs metadata and pointers. Content retrieval is authenticated and scope-gated.
+**INV-DAT-2: Event access is scope-gated.** CRDT syncs full events across the mesh. Access to event content is filtered at query time based on the caller's scope. All mesh members are trusted at the transport level (WireGuard).
 
 **INV-DAT-3: Embedding consistency.** All mesh members use the same embedding model version.

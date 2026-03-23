@@ -38,7 +38,7 @@ Maps every invariant to its enforcement point — where validation happens, what
 | ID | Invariant | Enforcement Point | Mechanism | Violation Response |
 |----|-----------|-------------------|-----------|-------------------|
 | INV-DAT-1 | Events append-only | cr-sqlite + SyncEngine API | Add-wins OR-Set semantics. No update/delete in event table. | Structural — no mutation API |
-| INV-DAT-2 | Content stays at origin | Sync design (ADR-001) | CRDT syncs event metadata. Content retrieval is authenticated and scope-gated at the daemon. | Scope check on retrieval |
+| INV-DAT-2 | Event access is scope-gated | Query handlers in kith-daemon + kith-shell | CRDT syncs full events. Query/retrieval filters by caller's scope (from MachinePolicy). All mesh members trusted at transport level (WireGuard). | Scope-filtered results |
 | INV-DAT-3 | Embedding consistency | kith-state config | Embedding model version recorded in metadata. Distance comparisons only between same-version embeddings. | Version check at query time |
 
 ---

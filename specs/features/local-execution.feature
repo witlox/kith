@@ -16,6 +16,27 @@ Feature: Local command execution
     Then the command "rm -rf /tmp/test" executes directly via bash
     And no InferenceBackend call is made
 
+  Scenario: Classification — known command is pass-through
+    Given kith shell is running
+    And "git" is in the PATH
+    When the user types "git push origin main"
+    Then the command executes directly via bash
+    And no InferenceBackend call is made
+
+  Scenario: Classification — natural language is intent
+    Given kith shell is running
+    And the InferenceBackend is reachable
+    When the user types "what's using port 3000?"
+    Then kith shell routes the input to InferenceBackend
+
+  Scenario: Classification rule — first token matched against PATH
+    Given kith shell is running
+    And "docker" is in the PATH
+    When the user types "docker compose up -d"
+    Then the command executes directly via bash
+    When the user types "deploy the app to staging"
+    Then kith shell routes the input to InferenceBackend
+
   Scenario: Intent is routed to the LLM
     Given kith shell is running
     And the InferenceBackend is reachable

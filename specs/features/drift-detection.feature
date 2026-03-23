@@ -37,7 +37,7 @@ Feature: Drift detection
   Scenario: Drift magnitude is computed from weighted categories
     Given drift weights are configured as files=1.0, services=2.0, network=1.5, packages=1.0
     And 2 file changes and 1 service change have been detected
-    Then the drift magnitude is 4.0
+    Then the squared drift magnitude is 8.0
     And the drift vector shows files=2.0, services=1.0, network=0.0, packages=0.0
 
   Scenario: Drift resets after commit
