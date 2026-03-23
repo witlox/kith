@@ -1,6 +1,7 @@
 # Multi-stage build for kith-daemon container
 FROM rust:1-bookworm AS builder
 
+RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY . .
 RUN cargo build --release -p kith-daemon --bin kith-daemon

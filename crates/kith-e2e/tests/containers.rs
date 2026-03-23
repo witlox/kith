@@ -17,7 +17,21 @@ use testcontainers::{core::WaitFor, GenericImage, ImageExt};
 fn kith_daemon_image() -> GenericImage {
     GenericImage::new("kith-daemon", "latest")
         .with_exposed_port(9443.into())
-        .with_wait_for(WaitFor::message_on_stderr("kith-daemon starting"))
+        .with_wait_for(WaitFor::message_on_stdout("kith-daemon starting"))
+}
+
+/// Wrap image with env vars. Must be called after kith_daemon_image().
+fn with_daemon_env(
+    image: GenericImage,
+    machine_name: &str,
+    users_env: &str,
+) -> testcontainers::ContainerRequest<GenericImage> {
+    image
+        .with_env_var("RUST_LOG", "info")
+        .with_env_var("NO_COLOR", "1")
+        .with_env_var("KITH_MACHINE_NAME", machine_name)
+        .with_env_var("KITH_USERS", users_env)
+        .with_env_var("KITH_TOFU", "false")
 }
 
 /// Scenario 5: two containerized daemons, shell connects to each.
@@ -29,10 +43,7 @@ async fn container_multi_daemon() {
     let users_env = format!("{pubkey_hex}:ops");
 
     // Start daemon 1
-    let daemon1 = kith_daemon_image()
-        .with_env_var("KITH_MACHINE_NAME", "container-1")
-        .with_env_var("KITH_USERS", &users_env)
-        .with_env_var("KITH_TOFU", "false")
+    let daemon1 = with_daemon_env(kith_daemon_image(), "container-1", &users_env)
         .start()
         .await
         .expect("daemon-1 should start");
@@ -41,10 +52,7 @@ async fn container_multi_daemon() {
     let addr1 = format!("http://127.0.0.1:{port1}");
 
     // Start daemon 2
-    let daemon2 = kith_daemon_image()
-        .with_env_var("KITH_MACHINE_NAME", "container-2")
-        .with_env_var("KITH_USERS", &users_env)
-        .with_env_var("KITH_TOFU", "false")
+    let daemon2 = with_daemon_env(kith_daemon_image(), "container-2", &users_env)
         .start()
         .await
         .expect("daemon-2 should start");
@@ -87,9 +95,7 @@ async fn container_daemon_restart_resilience() {
     let pubkey_hex = kith_common::credential::pubkey_to_hex(&kp.public_key_bytes());
     let users_env = format!("{pubkey_hex}:ops");
 
-    let daemon = kith_daemon_image()
-        .with_env_var("KITH_MACHINE_NAME", "restart-test")
-        .with_env_var("KITH_USERS", &users_env)
+    let daemon = with_daemon_env(kith_daemon_image(), "restart-test", &users_env)
         .start()
         .await
         .expect("daemon should start");

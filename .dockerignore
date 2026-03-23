@@ -1,0 +1,8 @@
+target/
+.git/
+.claude/
+docs/
+specs/
+*.md
+logo.png
+.DS_Store
