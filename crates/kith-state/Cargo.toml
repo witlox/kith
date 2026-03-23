@@ -3,6 +3,15 @@ name = "kith-state"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Vector index and semantic retrieval over operational state"
 
 [dependencies]
 kith-common = { path = "../kith-common" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

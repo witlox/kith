@@ -1,1 +1,1 @@
-// kith-state: vector index + retrieval. Stub — implementation pending.
+pub mod retrieval;
