@@ -7,5 +7,11 @@ publish = false
 
 [dependencies]
 kith-common = { path = "../kith-common" }
+kith-daemon = { path = "../kith-daemon" }
+kith-shell = { path = "../kith-shell" }
+kith-sync = { path = "../kith-sync" }
+kith-state = { path = "../kith-state" }
 tokio = { workspace = true }
+tonic = { workspace = true }
 serde_json = { workspace = true }
+tokio-stream = "0.1"
