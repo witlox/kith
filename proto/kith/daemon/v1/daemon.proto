@@ -1,0 +1,135 @@
+syntax = "proto3";
+
+package kith.daemon.v1;
+
+import "google/protobuf/timestamp.proto";
+
+service KithDaemon {
+  rpc Exec(ExecRequest) returns (stream ExecOutput);
+  rpc Query(QueryRequest) returns (StateResponse);
+  rpc Apply(ApplyRequest) returns (PendingChange);
+  rpc Commit(CommitRequest) returns (CommitResult);
+  rpc Rollback(RollbackRequest) returns (RollbackResult);
+  rpc Events(EventsRequest) returns (stream Event);
+  rpc Capabilities(CapabilitiesRequest) returns (CapabilityReport);
+}
+
+message ExecRequest {
+  string command = 1;
+  string identity_token = 2;
+  ExecScope scope = 3;
+}
+
+enum ExecScope {
+  EXEC_SCOPE_UNSPECIFIED = 0;
+  EXEC_SCOPE_READ_ONLY = 1;
+  EXEC_SCOPE_SANDBOXED = 2;
+  EXEC_SCOPE_FULL = 3;
+}
+
+message ExecOutput {
+  oneof output {
+    bytes stdout = 1;
+    bytes stderr = 2;
+  }
+  bool is_complete = 3;
+  int32 exit_code = 4;
+}
+
+message QueryRequest {
+  string identity_token = 1;
+  QueryType query_type = 2;
+}
+
+enum QueryType {
+  QUERY_TYPE_UNSPECIFIED = 0;
+  QUERY_TYPE_PROCESSES = 1;
+  QUERY_TYPE_SERVICES = 2;
+  QUERY_TYPE_DISK = 3;
+  QUERY_TYPE_NETWORK = 4;
+  QUERY_TYPE_DRIFT = 5;
+  QUERY_TYPE_FULL_STATE = 6;
+}
+
+message StateResponse {
+  string hostname = 1;
+  string json_payload = 2;
+  google.protobuf.Timestamp observed_at = 3;
+}
+
+message ApplyRequest {
+  string command = 1;
+  string identity_token = 2;
+  uint32 commit_window_seconds = 3;
+}
+
+message PendingChange {
+  string change_id = 1;
+  google.protobuf.Timestamp expires_at = 2;
+  string preview = 3;
+}
+
+message CommitRequest {
+  string change_id = 1;
+  string identity_token = 2;
+}
+
+message CommitResult {
+  bool success = 1;
+  string message = 2;
+}
+
+message RollbackRequest {
+  string change_id = 1;
+  string identity_token = 2;
+}
+
+message RollbackResult {
+  bool success = 1;
+  string message = 2;
+}
+
+message EventsRequest {
+  string identity_token = 1;
+  google.protobuf.Timestamp since = 2;
+  repeated string event_types = 3;
+}
+
+message Event {
+  string event_id = 1;
+  string event_type = 2;
+  string origin_host = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  string scope = 5;
+  string metadata_json = 6;
+  string content_json = 7;
+}
+
+message CapabilitiesRequest {
+  string identity_token = 1;
+}
+
+message CapabilityReport {
+  string hostname = 1;
+  string os = 2;
+  string arch = 3;
+  repeated string installed_tools = 4;
+  repeated string running_services = 5;
+  ResourceInfo resources = 6;
+  google.protobuf.Timestamp reported_at = 7;
+}
+
+message ResourceInfo {
+  uint64 memory_total_bytes = 1;
+  uint64 memory_available_bytes = 2;
+  uint64 disk_total_bytes = 3;
+  uint64 disk_available_bytes = 4;
+  uint32 cpu_count = 5;
+  repeated GpuInfo gpus = 6;
+}
+
+message GpuInfo {
+  string vendor = 1;
+  string model = 2;
+  uint64 memory_bytes = 3;
+}
