@@ -3,3 +3,8 @@ pub mod commit;
 pub mod drift;
 pub mod exec;
 pub mod policy;
+pub mod service;
+
+pub mod proto {
+    tonic::include_proto!("kith.daemon.v1");
+}
