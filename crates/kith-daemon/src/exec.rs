@@ -1,8 +1,13 @@
 //! Command executor — runs commands via tokio::process, captures output.
 //! In production, output streams back via gRPC.
 
+use std::time::Duration;
+
 use kith_common::error::KithError;
 use tokio::process::Command;
+
+/// Default command timeout.
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Result of a command execution.
 #[derive(Debug, Clone)]
@@ -12,14 +17,24 @@ pub struct ExecResult {
     pub exit_code: i32,
 }
 
-/// Execute a command and capture its output.
-/// This is the simple non-streaming version for basic use.
+/// Execute a command with the default timeout (120s).
 pub async fn exec_command(command: &str) -> Result<ExecResult, KithError> {
-    let output = Command::new("sh")
+    exec_command_with_timeout(command, DEFAULT_TIMEOUT).await
+}
+
+/// Execute a command with a configurable timeout.
+pub async fn exec_command_with_timeout(
+    command: &str,
+    timeout: Duration,
+) -> Result<ExecResult, KithError> {
+    let fut = Command::new("sh")
         .arg("-c")
         .arg(command)
-        .output()
+        .output();
+
+    let output = tokio::time::timeout(timeout, fut)
         .await
+        .map_err(|_| KithError::Internal(format!("command timed out after {timeout:?}: {command}")))?
         .map_err(|e| KithError::Internal(format!("failed to execute command: {e}")))?;
 
     Ok(ExecResult {
@@ -64,5 +79,13 @@ mod tests {
         let result = exec_command("echo 'hello world' | wc -w").await.unwrap();
         assert_eq!(result.stdout.trim(), "2");
         assert_eq!(result.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn exec_timeout() {
+        let result = exec_command_with_timeout("sleep 10", Duration::from_millis(100)).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("timed out"), "expected timeout error, got: {err}");
     }
 }
