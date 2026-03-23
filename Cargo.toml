@@ -7,6 +7,8 @@ members = [
     "crates/kith-shell",
     "crates/kith-sync",
     "crates/kith-state",
+    "crates/kith-acceptance",
+    "crates/kith-e2e",
 ]
 
 [workspace.package]
@@ -27,3 +29,8 @@ tonic-build = "0.13"
 prost = "0.13"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
+ed25519-dalek = { version = "2", features = ["serde", "rand_core"] }
+rand = "0.8"
+async-trait = "0.1"
+futures = "0.3"
+cucumber = "0.21"

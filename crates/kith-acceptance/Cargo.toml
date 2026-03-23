@@ -1,0 +1,16 @@
+[package]
+name = "kith-acceptance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+kith-common = { path = "../kith-common" }
+cucumber = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+
+[[test]]
+name = "acceptance"
+harness = false
