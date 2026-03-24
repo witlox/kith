@@ -1,3 +1,5 @@
+> All findings in this report have been resolved. See git history for fixes.
+
 # Adversary Implementation Review — Findings Report
 
 **Date:** 2026-03-23

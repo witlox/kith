@@ -1,3 +1,5 @@
+> All findings in this report have been resolved. See git history for fixes.
+
 # Adversary Full Sweep — Findings Report
 
 **Date:** 2026-03-24
