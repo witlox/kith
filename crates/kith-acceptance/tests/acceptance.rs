@@ -11,6 +11,7 @@ use kith_common::drift::{DriftVector, DriftWeights};
 use kith_common::event::{Event, EventCategory, EventScope};
 use kith_common::inference::*;
 use kith_common::policy::{MachinePolicy, PolicyDecision, Scope};
+use kith_daemon::audit::AuditLog;
 use kith_daemon::commit::CommitWindowManager;
 use kith_daemon::drift::{DriftEvaluator, ObserverEvent};
 use kith_mesh::peer::PeerRegistry;
@@ -64,9 +65,16 @@ pub struct KithWorld {
     pub current_backend_name: String,
     pub keypair: Option<Keypair>,
 
+    // --- Audit ---
+    pub audit_log: AuditLog,
+
     // --- Notifications ---
     pub notifications: Vec<String>,
-    pub audit_entries: Vec<Event>,
+
+    // --- Tracking ---
+    pub last_drift_event: Option<ObserverEvent>,
+    pub expected_services: Vec<String>,
+    pub ops_events_written: bool,
 }
 
 impl std::fmt::Debug for KithWorld {
@@ -122,8 +130,13 @@ impl KithWorld {
             current_backend_name: "mock-default".into(),
             keypair: None,
 
+            audit_log: AuditLog::new("test-machine"),
+
             notifications: Vec::new(),
-            audit_entries: Vec::new(),
+
+            last_drift_event: None,
+            expected_services: Vec::new(),
+            ops_events_written: false,
         }
     }
 }
