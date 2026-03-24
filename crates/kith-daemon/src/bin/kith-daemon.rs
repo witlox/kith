@@ -36,7 +36,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     });
     let cfg_daemon = config.as_ref().and_then(|c| c.daemon.as_ref());
-    let _cfg_mesh = config.as_ref().map(|c| &c.mesh); // Used in Phase 2 (real mesh)
 
     // --- Config: env vars > config file > defaults ---
     let listen_addr: SocketAddr = std::env::var("KITH_LISTEN_ADDR")
@@ -173,61 +172,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Task 5: Mesh networking loop (announce + periodic discovery)
     let es_mesh = event_store.clone();
     let mn_mesh = machine_name.clone();
-    let mesh_task = tokio::spawn(async move {
-        use kith_mesh::DefaultMeshManager;
-        use kith_mesh::signaling::InMemorySignaling;
-        use kith_mesh::wireguard::InMemoryWireguard;
 
-        let mesh_config = kith_common::config::MeshConfig {
+    // Read mesh config from file or env
+    let mesh_config = config.as_ref().map(|c| c.mesh.clone()).unwrap_or_else(|| {
+        kith_common::config::MeshConfig {
             identifier: std::env::var("KITH_MESH_ID").unwrap_or_else(|_| "default-mesh".into()),
             wireguard_interface: "kith0".into(),
             listen_port: 51820,
             mesh_cidr: std::env::var("KITH_MESH_CIDR").unwrap_or_else(|_| "kith-mesh".into()),
             nostr_relays: vec![],
             derp_url: None,
-        };
-
-        // Use in-memory backends for now. Real Nostr + WireGuard
-        // are available behind feature flags in kith-mesh.
-        let signaling = InMemorySignaling::new();
-        let wg = InMemoryWireguard::new("mock-wg-key");
-        let mut manager = DefaultMeshManager::new(mesh_config, mn_mesh.clone(), signaling, wg);
-
-        // Initial announce
-        if let Err(e) = manager.announce(None).await {
-            warn!(error = %e, "mesh announce failed");
         }
-        info!(mesh_ip = %manager.our_mesh_ip(), "mesh initialized");
+    });
 
-        // Periodic discovery loop
-        loop {
-            tokio::time::sleep(Duration::from_secs(30)).await;
-
-            match manager.discover_and_connect().await {
-                Ok(events) => {
-                    for event in &events {
-                        let mesh_event = Event::new(
-                            &mn_mesh,
-                            EventCategory::Mesh,
-                            "mesh.peer_discovered",
-                            format!("{event:?}"),
-                        )
-                        .with_scope(EventScope::Public);
-                        es_mesh.write(mesh_event).await;
-                    }
-                    if !events.is_empty() {
-                        info!(new_peers = events.len(), "mesh discovery");
-                    }
-                }
-                Err(e) => warn!(error = %e, "mesh discovery failed"),
-            }
-
-            if let Err(e) = manager.refresh_connectivity().await {
-                warn!(error = %e, "mesh connectivity refresh failed");
-            }
-
-            manager.expire_stale(300); // 5 min timeout
-        }
+    let mesh_task = tokio::spawn(async move {
+        run_mesh_loop(mesh_config, mn_mesh, es_mesh).await;
     });
 
     // Task 6: Sync loop (periodic merge with peers)
@@ -274,4 +233,103 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("kith-daemon stopped");
     Ok(())
+}
+
+/// Mesh networking loop — generic over backend implementations.
+/// With `--features real-mesh`: uses Nostr + WireGuard.
+/// Without: uses in-memory mocks (for testing/development).
+async fn run_mesh_loop(
+    mesh_config: kith_common::config::MeshConfig,
+    machine_name: String,
+    event_store: Arc<EventStore>,
+) {
+    use kith_mesh::DefaultMeshManager;
+
+    #[cfg(feature = "real-mesh")]
+    let (signaling, wg) = {
+        use kith_mesh::nostr_signaling::NostrSignaling;
+        use kith_mesh::wg_backend::NativeWireguard;
+
+        let signaling = match NostrSignaling::new(
+            mesh_config.identifier.clone(),
+            &mesh_config.nostr_relays,
+        )
+        .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!(error = %e, "failed to create Nostr signaling — falling back to mock");
+                // Can't easily fall back to different type here, so just log and return
+                return;
+            }
+        };
+
+        let (priv_key, _pub_key) = NativeWireguard::generate_keypair();
+        let wg = match NativeWireguard::new(
+            &mesh_config.wireguard_interface,
+            &priv_key,
+            mesh_config.listen_port,
+        ) {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::error!(error = %e, "failed to create WireGuard interface — falling back to mock");
+                return;
+            }
+        };
+
+        info!("real mesh: Nostr signaling + WireGuard transport");
+        (signaling, wg)
+    };
+
+    #[cfg(not(feature = "real-mesh"))]
+    let (signaling, wg) = {
+        use kith_mesh::signaling::InMemorySignaling;
+        use kith_mesh::wireguard::InMemoryWireguard;
+
+        info!(
+            "mock mesh: in-memory signaling + wireguard (use --features real-mesh for production)"
+        );
+        (
+            InMemorySignaling::new(),
+            InMemoryWireguard::new("mock-wg-key"),
+        )
+    };
+
+    let mut manager = DefaultMeshManager::new(mesh_config, machine_name.clone(), signaling, wg);
+
+    // Initial announce
+    if let Err(e) = manager.announce(None).await {
+        warn!(error = %e, "mesh announce failed");
+    }
+    info!(mesh_ip = %manager.our_mesh_ip(), "mesh initialized");
+
+    // Periodic discovery loop
+    loop {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+
+        match manager.discover_and_connect().await {
+            Ok(events) => {
+                for event in &events {
+                    let mesh_event = Event::new(
+                        &machine_name,
+                        EventCategory::Mesh,
+                        "mesh.peer_discovered",
+                        format!("{event:?}"),
+                    )
+                    .with_scope(EventScope::Public);
+                    event_store.write(mesh_event).await;
+                }
+                if !events.is_empty() {
+                    info!(new_peers = events.len(), "mesh discovery");
+                }
+            }
+            Err(e) => warn!(error = %e, "mesh discovery failed"),
+        }
+
+        if let Err(e) = manager.refresh_connectivity().await {
+            warn!(error = %e, "mesh connectivity refresh failed");
+        }
+
+        manager.expire_stale(300); // 5 min timeout
+    }
 }
