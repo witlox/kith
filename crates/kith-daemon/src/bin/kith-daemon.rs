@@ -113,20 +113,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let commit_mgr = CommitWindowManager::new(Duration::from_secs(commit_window_secs));
     let evaluator = PolicyEvaluator::new(policy.clone(), machine_name.clone());
 
-    // Use persistent SqliteEventStore if data_dir is available, else in-memory
+    // Event stores: in-memory for fast queries + SQLite for persistence
+    let event_store = Arc::new(EventStore::new());
     let db_path = data_dir.join("events.db");
-    let event_store: Arc<EventStore> = if let Ok(sqlite_store) =
-        kith_sync::sqlite_store::SqliteEventStore::open(&db_path)
-    {
-        info!(path = %db_path.display(), crdt = sqlite_store.is_crdt_enabled(), "using SQLite event store");
-        // SqliteEventStore has the same methods but different type.
-        // For now, use in-memory EventStore and sync from SQLite on startup.
-        // TODO: unify EventStore trait to support both backends.
-        // For now: use InMemory as the shared runtime store.
-        Arc::new(EventStore::new())
-    } else {
-        warn!("SQLite event store failed to open — using in-memory");
-        Arc::new(EventStore::new())
+    let sqlite_store = match kith_sync::sqlite_store::SqliteEventStore::open(&db_path) {
+        Ok(store) => {
+            info!(path = %db_path.display(), crdt = store.is_crdt_enabled(), "SQLite event store opened");
+            // Load existing events into in-memory store
+            let existing = store.all().await;
+            if !existing.is_empty() {
+                let count = event_store.merge(existing).await;
+                info!(loaded = count, "loaded persisted events from SQLite");
+            }
+            Some(Arc::new(store))
+        }
+        Err(e) => {
+            warn!(error = %e, "SQLite event store failed — using in-memory only");
+            None
+        }
     };
 
     // Wire service with shared event store
@@ -156,11 +160,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Spawn background tasks ---
 
-    // Task 1: Audit sink — poll audit channel → EventStore
+    // Task 1: Audit sink — poll audit channel → EventStore + SQLite
     let es_audit = event_store.clone();
+    let sql_audit = sqlite_store.clone();
     let audit_task = tokio::spawn(async move {
         while let Some(event) = audit_rx.recv().await {
-            es_audit.write(event).await;
+            es_audit.write(event.clone()).await;
+            if let Some(ref sql) = sql_audit {
+                sql.write(event).await;
+            }
         }
     });
 
@@ -194,8 +202,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("process observer started");
     }
 
-    // Task 4: Drift event processor — observer events → evaluator + event store
+    // Task 4: Drift event processor — observer events → evaluator + event store + SQLite
     let es_drift = event_store.clone();
+    let sql_drift = sqlite_store.clone();
     let de = drift_evaluator.clone();
     let mn = machine_name.clone();
     let drift_task = tokio::spawn(async move {
@@ -210,7 +219,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .with_path(&obs_event.path)
                 .with_scope(EventScope::Public);
-                es_drift.write(event).await;
+                es_drift.write(event.clone()).await;
+                if let Some(ref sql) = sql_drift {
+                    sql.write(event).await;
+                }
                 let mag = eval.magnitude_sq();
                 if mag > 0.0 {
                     info!(magnitude = mag, path = %obs_event.path, "drift detected");

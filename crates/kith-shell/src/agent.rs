@@ -11,7 +11,7 @@ use crate::context::ConversationContext;
 use crate::daemon_client::DaemonClient;
 use crate::tools;
 
-use kith_common::event::EventScope;
+use kith_common::event::{Event, EventScope};
 use kith_state::embedding::{BagOfWordsEmbedder, EmbeddingBackend};
 use kith_state::hybrid::HybridRetriever;
 use kith_state::retrieval::KeywordRetriever;
@@ -95,6 +95,18 @@ impl Agent {
 
     pub fn set_daemon(&mut self, daemon: DaemonClient) {
         self.daemon = Some(daemon);
+    }
+
+    /// Access the event store for injecting events (e.g., from sync loop).
+    pub fn event_store_mut(&mut self) -> &EventStore {
+        &self.event_store
+    }
+
+    /// Index an event into the vector index for hybrid retrieval.
+    pub async fn index_event(&mut self, event: &Event) {
+        if let Ok(emb) = self.embedder.embed(&event.detail).await {
+            self.hybrid_retriever.index_mut().insert(event.clone(), emb);
+        }
     }
 
     pub fn backend_name(&self) -> &str {
