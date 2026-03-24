@@ -6,7 +6,7 @@
 //!   kith --backend anthropic      # override backend
 //!   kith --daemon host:port       # connect to remote daemon
 
-use std::io::{self, BufRead, Write};
+use std::io::Write;
 
 use kith_common::credential::Keypair;
 use kith_common::inference::InferenceBackend;
@@ -95,33 +95,84 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Interactive mode
+    // Interactive mode with PTY + rustyline
     eprintln!("kith shell — {} on {hostname}", agent.backend_name());
     eprintln!("type naturally or use commands directly. run: prefix for escape hatch.\n");
 
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
+    // Spawn PTY bash for pass-through commands
+    let pty = match kith_shell::pty::PtyShell::spawn() {
+        Ok(p) => Some(p),
+        Err(e) => {
+            eprintln!("warning: PTY unavailable ({e}), using direct exec fallback");
+            None
+        }
+    };
+
+    // rustyline for line editing with history
+    let history_path = dirs_next::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("kith")
+        .join("history.txt");
+    let mut rl = rustyline::DefaultEditor::new().unwrap_or_else(|_| {
+        rustyline::DefaultEditor::new().expect("rustyline init")
+    });
+    let _ = rl.load_history(&history_path);
 
     loop {
-        print!("kith> ");
-        stdout.flush()?;
+        let readline = rl.readline("kith> ");
+        match readline {
+            Ok(line) => {
+                let input = line.trim();
+                if input.is_empty() {
+                    continue;
+                }
+                if input == "exit" || input == "quit" {
+                    break;
+                }
+                rl.add_history_entry(input).ok();
 
-        let mut line = String::new();
-        if stdin.lock().read_line(&mut line)? == 0 {
-            break; // EOF
+                // Classify and route
+                use kith_shell::classify::InputClass;
+                match agent.classifier().classify(input) {
+                    InputClass::PassThrough(cmd) => {
+                        if cmd.is_empty() {
+                            continue;
+                        }
+                        if let Some(ref pty_shell) = pty {
+                            // Execute via PTY bash
+                            match pty_shell.exec_and_capture(&cmd, std::time::Duration::from_secs(30)) {
+                                Ok(output) => print!("{output}"),
+                                Err(e) => eprintln!("error: {e}"),
+                            }
+                        } else {
+                            // Fallback: direct exec
+                            let output = agent.process(input).await;
+                            print_output(&output);
+                        }
+                    }
+                    InputClass::Intent(_) => {
+                        // Route to LLM agent
+                        let output = agent.process(input).await;
+                        print_output(&output);
+                    }
+                }
+            }
+            Err(rustyline::error::ReadlineError::Interrupted) => {
+                // Ctrl-C: clear line, continue
+                continue;
+            }
+            Err(rustyline::error::ReadlineError::Eof) => {
+                // Ctrl-D: exit
+                break;
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                break;
+            }
         }
-
-        let input = line.trim();
-        if input.is_empty() {
-            continue;
-        }
-        if input == "exit" || input == "quit" {
-            break;
-        }
-
-        let output = agent.process(input).await;
-        print_output(&output);
     }
+
+    let _ = rl.save_history(&history_path);
 
     Ok(())
 }

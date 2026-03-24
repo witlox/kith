@@ -78,6 +78,10 @@ impl Agent {
         self.backend.name()
     }
 
+    pub fn classifier(&self) -> &InputClassifier {
+        &self.classifier
+    }
+
     /// Process one line of user input. Returns what happened.
     pub async fn process(&mut self, input: &str) -> AgentOutput {
         match self.classifier.classify(input) {
