@@ -51,7 +51,7 @@ pub struct Agent {
     backend: Box<dyn InferenceBackend>,
     daemon: Option<DaemonClient>,
     event_store: EventStore,
-    embedder: BagOfWordsEmbedder,
+    embedder: Box<dyn EmbeddingBackend>,
     hybrid_retriever: HybridRetriever,
     todos: Vec<TodoItem>,
 }
@@ -64,10 +64,21 @@ pub struct TodoItem {
 
 impl Agent {
     pub fn new(backend: Box<dyn InferenceBackend>, system_prompt: String) -> Self {
+        Self::with_embedder(
+            backend,
+            system_prompt,
+            Box::new(BagOfWordsEmbedder::new(1000)),
+        )
+    }
+
+    pub fn with_embedder(
+        backend: Box<dyn InferenceBackend>,
+        system_prompt: String,
+        embedder: Box<dyn EmbeddingBackend>,
+    ) -> Self {
         let mut context = ConversationContext::new(50);
         context.set_system_prompt(system_prompt);
 
-        let embedder = BagOfWordsEmbedder::new(1000);
         let hybrid_retriever = HybridRetriever::new(VectorIndex::new());
 
         Self {

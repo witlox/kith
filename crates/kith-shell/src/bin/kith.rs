@@ -90,7 +90,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let os_info = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
     let prompt = build_system_prompt(&hostname, &os_info, "", None);
 
-    let mut agent = Agent::new(backend, prompt);
+    // Build embedding backend from config
+    let embedder: Box<dyn kith_state::embedding::EmbeddingBackend> =
+        match config.as_ref().and_then(|c| c.embedding.as_ref()) {
+            Some(emb_cfg) if emb_cfg.backend == "api" => {
+                let endpoint = emb_cfg
+                    .endpoint
+                    .as_deref()
+                    .unwrap_or("http://localhost:11434/v1");
+                let model = emb_cfg.model.as_deref().unwrap_or("all-minilm");
+                let dims = emb_cfg.dimensions.unwrap_or(384);
+                Box::new(kith_state::api_embedding::ApiEmbeddingBackend::new(
+                    endpoint.into(),
+                    model.into(),
+                    None,
+                    dims,
+                ))
+            }
+            _ => Box::new(kith_state::embedding::BagOfWordsEmbedder::new(1000)),
+        };
+
+    let mut agent = Agent::with_embedder(backend, prompt, embedder);
 
     // Connect to daemon if specified
     if let Some(ref addr) = daemon_addr {

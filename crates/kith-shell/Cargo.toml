@@ -10,7 +10,7 @@ description = "Terminal interface: input classification, LLM inference, tool dis
 kith-common = { path = "../kith-common" }
 kith-daemon = { path = "../kith-daemon" }
 kith-sync = { path = "../kith-sync" }
-kith-state = { path = "../kith-state" }
+kith-state = { path = "../kith-state", features = ["api-embeddings"] }
 tokio = { workspace = true }
 tonic = { workspace = true }
 tracing = { workspace = true }
