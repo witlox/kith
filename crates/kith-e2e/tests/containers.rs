@@ -88,6 +88,170 @@ async fn container_multi_daemon() {
     assert!(s2.contains("container-2"));
 }
 
+/// Apply/commit/rollback through containerized daemon.
+#[tokio::test]
+async fn container_apply_commit_rollback() {
+    let kp = Keypair::generate();
+    let pubkey_hex = kith_common::credential::pubkey_to_hex(&kp.public_key_bytes());
+    let users_env = format!("{pubkey_hex}:ops");
+
+    let daemon = with_daemon_env(kith_daemon_image(), "apply-test", &users_env)
+        .start()
+        .await
+        .expect("daemon should start");
+
+    let port = daemon.get_host_port_ipv4(9443).await.unwrap();
+    let addr = format!("http://127.0.0.1:{port}");
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let mut client =
+        DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
+            .await
+            .unwrap();
+
+    // Apply
+    let pending_id = client.apply("docker compose up", 600).await.unwrap();
+    assert!(!pending_id.is_empty());
+
+    // Commit
+    let committed = client.commit(&pending_id).await.unwrap();
+    assert!(committed);
+
+    // Double-commit fails gracefully
+    let double = client.commit(&pending_id).await.unwrap();
+    assert!(!double);
+
+    // Apply + rollback
+    let pending_id2 = client.apply("risky change", 600).await.unwrap();
+    let rolled_back = client.rollback(&pending_id2).await.unwrap();
+    assert!(rolled_back);
+}
+
+/// Auth denial through containerized daemon.
+#[tokio::test]
+async fn container_auth_denied() {
+    let server_kp = Keypair::generate();
+    let pubkey_hex = kith_common::credential::pubkey_to_hex(&server_kp.public_key_bytes());
+    let users_env = format!("{pubkey_hex}:ops");
+
+    let daemon = with_daemon_env(kith_daemon_image(), "auth-test", &users_env)
+        .start()
+        .await
+        .expect("daemon should start");
+
+    let port = daemon.get_host_port_ipv4(9443).await.unwrap();
+    let addr = format!("http://127.0.0.1:{port}");
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // Connect with unauthorized keypair
+    let bad_kp = Keypair::generate();
+    let mut client = DaemonClient::connect(&addr, bad_kp).await.unwrap();
+
+    let result = client.exec("echo should-fail").await;
+    assert!(result.is_err(), "unauthorized exec should fail");
+}
+
+/// TOFU mode: unknown key gets viewer scope.
+#[tokio::test]
+async fn container_tofu_mode() {
+    let daemon = kith_daemon_image()
+        .with_env_var("RUST_LOG", "info")
+        .with_env_var("NO_COLOR", "1")
+        .with_env_var("KITH_MACHINE_NAME", "tofu-test")
+        .with_env_var("KITH_TOFU", "true")
+        .with_env_var("KITH_USERS", "") // no pre-authorized users
+        .start()
+        .await
+        .expect("daemon should start");
+
+    let port = daemon.get_host_port_ipv4(9443).await.unwrap();
+    let addr = format!("http://127.0.0.1:{port}");
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // Unknown key with TOFU enabled — should get viewer scope
+    let kp = Keypair::generate();
+    let mut client = DaemonClient::connect(&addr, kp).await.unwrap();
+
+    // Query should work (viewer can query)
+    let state = client.query().await.unwrap();
+    assert!(state.contains("tofu-test"));
+
+    // Exec should be denied (viewer can't exec)
+    let result = client.exec("echo tofu-test").await;
+    assert!(result.is_err(), "TOFU viewer should not be able to exec");
+}
+
+/// Concurrent exec from multiple clients to one container.
+#[tokio::test]
+async fn container_concurrent_exec() {
+    let kp = Keypair::generate();
+    let pubkey_hex = kith_common::credential::pubkey_to_hex(&kp.public_key_bytes());
+    let users_env = format!("{pubkey_hex}:ops");
+
+    let daemon = with_daemon_env(kith_daemon_image(), "concurrent-test", &users_env)
+        .start()
+        .await
+        .expect("daemon should start");
+
+    let port = daemon.get_host_port_ipv4(9443).await.unwrap();
+    let addr = format!("http://127.0.0.1:{port}");
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let mut handles = Vec::new();
+    for i in 0..5 {
+        let addr = addr.clone();
+        let secret = kp.secret_bytes();
+        let handle = tokio::spawn(async move {
+            let mut client =
+                DaemonClient::connect(&addr, Keypair::from_secret(&secret))
+                    .await
+                    .unwrap();
+            let result = client.exec(&format!("echo concurrent-{i}")).await.unwrap();
+            assert_eq!(result.exit_code, 0);
+            assert!(result.stdout.contains(&format!("concurrent-{i}")));
+        });
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        handle.await.unwrap();
+    }
+}
+
+/// Multi-command sequence in container.
+#[tokio::test]
+async fn container_multi_command_sequence() {
+    let kp = Keypair::generate();
+    let pubkey_hex = kith_common::credential::pubkey_to_hex(&kp.public_key_bytes());
+    let users_env = format!("{pubkey_hex}:ops");
+
+    let daemon = with_daemon_env(kith_daemon_image(), "sequence-test", &users_env)
+        .start()
+        .await
+        .expect("daemon should start");
+
+    let port = daemon.get_host_port_ipv4(9443).await.unwrap();
+    let addr = format!("http://127.0.0.1:{port}");
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let mut client =
+        DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
+            .await
+            .unwrap();
+
+    // Run a sequence of commands
+    let r1 = client.exec("echo step-1").await.unwrap();
+    assert!(r1.stdout.contains("step-1"));
+
+    let r2 = client.exec("echo step-2 && echo step-3").await.unwrap();
+    assert!(r2.stdout.contains("step-2"));
+    assert!(r2.stdout.contains("step-3"));
+
+    let r3 = client.exec("pwd").await.unwrap();
+    assert_eq!(r3.exit_code, 0);
+    assert!(!r3.stdout.is_empty());
+}
+
 /// Chaos: container kill and reconnect.
 #[tokio::test]
 async fn container_daemon_restart_resilience() {
