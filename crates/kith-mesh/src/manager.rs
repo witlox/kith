@@ -391,9 +391,9 @@ mod tests {
     fn ipv4_fallback() {
         let ip = allocate_mesh_ip("10.47.0.0/24", "dev-mac");
         assert!(ip.starts_with("10.47.0."), "should be IPv4: {ip}");
-        let host: u8 = ip.split('.').last().unwrap().parse().unwrap();
+        let host: u8 = ip.split('.').next_back().unwrap().parse().unwrap();
         assert!(
-            host >= 1 && host <= 253,
+            (1..=253).contains(&host),
             "host part should be 1-253: {host}"
         );
     }

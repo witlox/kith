@@ -145,14 +145,12 @@ mod tests {
 
     #[test]
     fn blacklist_filters_default_noisy_paths() {
-        let patterns = vec![
-            "/tmp/**",
+        let patterns = ["/tmp/**",
             "/var/log/**",
             "/proc/**",
             "/sys/**",
             "/dev/**",
-            "/run/user/**",
-        ];
+            "/run/user/**"];
         let noisy = vec![
             "/tmp/scratch",
             "/var/log/syslog",

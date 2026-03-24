@@ -31,12 +31,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // --- Load config file if available ---
-    let config = kith_common::config::KithConfig::load(None)
-        .unwrap_or_else(|e| {
-            eprintln!("warning: config load failed: {e}");
-            None
-        });
-    let cfg_daemon = config.as_ref().and_then(|c| c.daemon.as_ref());
+    let config = kith_common::config::KithConfig::load(None).unwrap_or_else(|e| {
+        eprintln!("warning: config load failed: {e}");
+        None
+    });
+    let _cfg_daemon = config.as_ref().and_then(|c| c.daemon.as_ref());
 
     // --- Config: env vars override config file ---
     let listen_addr: SocketAddr = std::env::var("KITH_LISTEN_ADDR")
@@ -195,7 +194,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             &mn_mesh,
                             EventCategory::Mesh,
                             "mesh.peer_discovered",
-                            &format!("{event:?}"),
+                            format!("{event:?}"),
                         )
                         .with_scope(EventScope::Public);
                         es_mesh.write(mesh_event).await;
@@ -216,7 +215,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Task 6: Sync loop (periodic merge with peers)
-    let es_sync = event_store.clone();
+    let _es_sync = event_store.clone();
     let sync_task = tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(30)).await;

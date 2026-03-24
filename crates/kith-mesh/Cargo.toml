@@ -1,4 +1,5 @@
 [package]
+
 name = "kith-mesh"
 version.workspace = true
 edition.workspace = true
@@ -26,3 +27,6 @@ x25519-dalek = { version = "2", features = ["static_secrets"], optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[lints]
+workspace = true

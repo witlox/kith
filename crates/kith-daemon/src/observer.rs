@@ -45,23 +45,20 @@ impl FileObserver {
 
     fn scan_initial(&mut self) {
         for path in &self.watch_paths {
-            if let Ok(meta) = std::fs::metadata(path) {
-                if let Ok(mtime) = meta.modified() {
+            if let Ok(meta) = std::fs::metadata(path)
+                && let Ok(mtime) = meta.modified() {
                     self.state.insert(path.clone(), mtime);
                 }
-            }
             // Also scan directory contents if it's a dir
-            if path.is_dir() {
-                if let Ok(entries) = std::fs::read_dir(path) {
+            if path.is_dir()
+                && let Ok(entries) = std::fs::read_dir(path) {
                     for entry in entries.flatten() {
-                        if let Ok(meta) = entry.metadata() {
-                            if let Ok(mtime) = meta.modified() {
+                        if let Ok(meta) = entry.metadata()
+                            && let Ok(mtime) = meta.modified() {
                                 self.state.insert(entry.path(), mtime);
                             }
-                        }
                     }
                 }
-            }
         }
     }
 
@@ -77,7 +74,7 @@ impl FileObserver {
         match std::fs::metadata(path) {
             Ok(meta) => {
                 if let Ok(mtime) = meta.modified() {
-                    let changed = self.state.get(path).map_or(true, |prev| *prev != mtime);
+                    let changed = self.state.get(path).is_none_or(|prev| *prev != mtime);
 
                     if changed {
                         let event_detail = if self.state.contains_key(path) {
@@ -189,7 +186,7 @@ impl ProcessObserver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    
 
     #[tokio::test]
     async fn file_observer_detects_change() {

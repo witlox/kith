@@ -1,4 +1,5 @@
 [package]
+
 name = "kith-daemon"
 version.workspace = true
 edition.workspace = true
@@ -33,3 +34,6 @@ tonic-build = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 tempfile = "3"
+
+[lints]
+workspace = true

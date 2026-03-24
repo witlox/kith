@@ -32,7 +32,7 @@ async fn deployment_failure(world: &mut KithWorld, machine: String, _hours: u32)
         &machine,
         EventCategory::System,
         "system.error",
-        &format!("deployment failed on {machine}: OOM, staging broken"),
+        format!("deployment failed on {machine}: OOM, staging broken"),
     )
     .with_scope(EventScope::Ops);
     world.event_store.write(event).await;

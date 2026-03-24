@@ -18,15 +18,14 @@ impl ConversationContext {
     /// Add the system prompt as the first message.
     pub fn set_system_prompt(&mut self, prompt: String) {
         // Replace existing system message or insert at beginning
-        if let Some(first) = self.messages.first() {
-            if matches!(first.role, Role::System) {
+        if let Some(first) = self.messages.first()
+            && matches!(first.role, Role::System) {
                 self.messages[0] = Message {
                     role: Role::System,
                     content: MessageContent::Text(prompt),
                 };
                 return;
             }
-        }
         self.messages.insert(
             0,
             Message {

@@ -3,9 +3,9 @@
 
 use kith_common::event::{Event, EventScope};
 
-use crate::embedding::{Embedding, EmbeddingBackend};
-use crate::retrieval::{KeywordRetriever, RetrievalResult};
-use crate::vector_index::{SearchResult, VectorIndex};
+use crate::embedding::Embedding;
+use crate::retrieval::KeywordRetriever;
+use crate::vector_index::VectorIndex;
 
 /// Hybrid retrieval combining keyword + vector results.
 pub struct HybridRetriever {
@@ -123,7 +123,7 @@ pub struct HybridResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::embedding::BagOfWordsEmbedder;
+    use crate::embedding::{BagOfWordsEmbedder, EmbeddingBackend};
     use kith_common::event::{Event, EventCategory};
 
     fn make_event(machine: &str, detail: &str) -> Event {

@@ -1,4 +1,5 @@
 [package]
+
 name = "kith-sync"
 version.workspace = true
 edition.workspace = true
@@ -17,3 +18,6 @@ rusqlite = { version = "0.32", features = ["bundled", "load_extension"] }
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tempfile = "3"
+
+[lints]
+workspace = true

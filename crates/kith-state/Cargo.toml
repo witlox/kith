@@ -1,4 +1,5 @@
 [package]
+
 name = "kith-state"
 version.workspace = true
 edition.workspace = true
@@ -21,3 +22,6 @@ reqwest = { version = "0.12", features = ["json"], optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

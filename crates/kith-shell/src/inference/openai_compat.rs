@@ -192,29 +192,27 @@ fn parse_openai_sse_stream(
                             ));
                         }
 
-                        if let Ok(chunk) = serde_json::from_str::<OaiStreamChunk>(data) {
-                            if let Some(choice) = chunk.choices.first() {
+                        if let Ok(chunk) = serde_json::from_str::<OaiStreamChunk>(data)
+                            && let Some(choice) = chunk.choices.first() {
                                 let delta = &choice.delta;
 
                                 // Text content
-                                if let Some(ref content) = delta.content {
-                                    if !content.is_empty() {
+                                if let Some(ref content) = delta.content
+                                    && !content.is_empty() {
                                         return Some((
                                             Ok(StreamChunk::TextDelta(content.clone())),
                                             (stream, buf, tool_calls),
                                         ));
                                     }
-                                }
 
                                 // Reasoning/thinking (some models)
-                                if let Some(ref reasoning) = delta.reasoning_content {
-                                    if !reasoning.is_empty() {
+                                if let Some(ref reasoning) = delta.reasoning_content
+                                    && !reasoning.is_empty() {
                                         return Some((
                                             Ok(StreamChunk::ThinkingDelta(reasoning.clone())),
                                             (stream, buf, tool_calls),
                                         ));
                                     }
-                                }
 
                                 // Tool calls (accumulated across chunks)
                                 if let Some(ref tcs) = delta.tool_calls {
@@ -257,7 +255,6 @@ fn parse_openai_sse_stream(
                                     }
                                 }
                             }
-                        }
                     }
                     continue;
                 }

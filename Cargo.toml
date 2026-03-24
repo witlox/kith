@@ -37,3 +37,7 @@ cucumber = "0.21"
 toml = "0.8"
 nix = { version = "0.29", features = ["process", "fs", "term", "poll", "signal"] }
 rustyline = "15"
+
+[workspace.lints.clippy]
+field_reassign_with_default = "allow"
+result_large_err = "allow"

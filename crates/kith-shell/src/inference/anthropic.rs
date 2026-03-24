@@ -262,9 +262,9 @@ fn parse_anthropic_sse_stream(
 
                     match event_type.as_str() {
                         "content_block_start" => {
-                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
-                                if let Some(cb) = v.get("content_block") {
-                                    if cb.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
+                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data)
+                                && let Some(cb) = v.get("content_block")
+                                    && cb.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
                                         tool_id = cb
                                             .get("id")
                                             .and_then(|i| i.as_str())
@@ -277,20 +277,17 @@ fn parse_anthropic_sse_stream(
                                             .into();
                                         tool_input.clear();
                                     }
-                                }
-                            }
                         }
                         "content_block_delta" => {
-                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
-                                if let Some(delta) = v.get("delta") {
+                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data)
+                                && let Some(delta) = v.get("delta") {
                                     let delta_type =
                                         delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
                                     match delta_type {
                                         "text_delta" => {
                                             if let Some(text) =
                                                 delta.get("text").and_then(|t| t.as_str())
-                                            {
-                                                if !text.is_empty() {
+                                                && !text.is_empty() {
                                                     return Some((
                                                         Ok(StreamChunk::TextDelta(text.into())),
                                                         (
@@ -299,13 +296,11 @@ fn parse_anthropic_sse_stream(
                                                         ),
                                                     ));
                                                 }
-                                            }
                                         }
                                         "thinking_delta" => {
                                             if let Some(thinking) =
                                                 delta.get("thinking").and_then(|t| t.as_str())
-                                            {
-                                                if !thinking.is_empty() {
+                                                && !thinking.is_empty() {
                                                     return Some((
                                                         Ok(StreamChunk::ThinkingDelta(
                                                             thinking.into(),
@@ -316,7 +311,6 @@ fn parse_anthropic_sse_stream(
                                                         ),
                                                     ));
                                                 }
-                                            }
                                         }
                                         "input_json_delta" => {
                                             if let Some(partial) =
@@ -328,7 +322,6 @@ fn parse_anthropic_sse_stream(
                                         _ => {}
                                     }
                                 }
-                            }
                         }
                         "content_block_stop" => {
                             if !tool_name.is_empty() {

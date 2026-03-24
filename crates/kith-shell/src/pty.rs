@@ -145,10 +145,10 @@ impl PtyShell {
 
     /// Check if the child process is still running.
     pub fn is_alive(&self) -> bool {
-        match waitpid(self.child_pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
-            Ok(nix::sys::wait::WaitStatus::StillAlive) => true,
-            _ => false,
-        }
+        matches!(
+            waitpid(self.child_pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)),
+            Ok(nix::sys::wait::WaitStatus::StillAlive)
+        )
     }
 
     /// Get the child PID.

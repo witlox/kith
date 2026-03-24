@@ -129,7 +129,7 @@ async fn chaos_high_volume_merge() {
                     "node-a",
                     EventCategory::System,
                     "system.tick",
-                    &format!("tick-a-{i}"),
+                    format!("tick-a-{i}"),
                 )
                 .with_scope(EventScope::Ops),
             )
@@ -140,7 +140,7 @@ async fn chaos_high_volume_merge() {
                     "node-b",
                     EventCategory::System,
                     "system.tick",
-                    &format!("tick-b-{i}"),
+                    format!("tick-b-{i}"),
                 )
                 .with_scope(EventScope::Ops),
             )
@@ -175,7 +175,7 @@ async fn chaos_subscription_under_load() {
     let mut rx = store.subscribe();
 
     // Spawn writer
-    let store_clone = {
+    let _store_clone = {
         // We need Arc for sharing — but EventStore doesn't impl Clone.
         // Instead, write from this task and check subscription after.
         let count = 100;
@@ -186,7 +186,7 @@ async fn chaos_subscription_under_load() {
                         "node",
                         EventCategory::System,
                         "system.tick",
-                        &format!("tick-{i}"),
+                        format!("tick-{i}"),
                     )
                     .with_scope(EventScope::Ops),
                 )

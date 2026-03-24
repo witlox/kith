@@ -29,6 +29,7 @@ pub struct ContainmentConfig {
     pub overlayfs: bool,
 }
 
+#[allow(clippy::derivable_impls)] // Uses cfg!() which can't be derived
 impl Default for ContainmentConfig {
     fn default() -> Self {
         Self {

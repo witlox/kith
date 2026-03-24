@@ -1,4 +1,5 @@
 [package]
+
 name = "kith-acceptance"
 version.workspace = true
 edition.workspace = true
@@ -22,3 +23,6 @@ tokio-stream = "0.1"
 [[test]]
 name = "acceptance"
 harness = false
+
+[lints]
+workspace = true

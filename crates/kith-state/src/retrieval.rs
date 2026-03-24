@@ -100,7 +100,7 @@ mod tests {
             machine,
             EventCategory::Drift,
             "drift.file_changed",
-            &format!("modified {path}"),
+            format!("modified {path}"),
         )
         .with_path(path)
         .with_scope(EventScope::Public)

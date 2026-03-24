@@ -174,7 +174,7 @@ async fn e2e_partition_and_recovery() {
                     "dev-mac",
                     EventCategory::Exec,
                     "exec.command",
-                    &format!("command-a-{i}"),
+                    format!("command-a-{i}"),
                 )
                 .with_scope(EventScope::Ops),
             )
@@ -188,7 +188,7 @@ async fn e2e_partition_and_recovery() {
                     "staging-1",
                     EventCategory::Exec,
                     "exec.command",
-                    &format!("command-b-{i}"),
+                    format!("command-b-{i}"),
                 )
                 .with_scope(EventScope::Ops),
             )
@@ -259,7 +259,7 @@ async fn e2e_long_partition_recovery() {
                     "dev-mac",
                     EventCategory::System,
                     "system.heartbeat",
-                    &format!("heartbeat-a-{i}"),
+                    format!("heartbeat-a-{i}"),
                 )
                 .with_scope(EventScope::Ops),
             )
@@ -270,7 +270,7 @@ async fn e2e_long_partition_recovery() {
                     "staging-1",
                     EventCategory::System,
                     "system.heartbeat",
-                    &format!("heartbeat-b-{i}"),
+                    format!("heartbeat-b-{i}"),
                 )
                 .with_scope(EventScope::Ops),
             )

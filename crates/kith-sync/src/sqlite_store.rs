@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
 use rusqlite::{Connection, params};
 use tokio::sync::{Mutex, broadcast};
 use tracing::{info, warn};
@@ -241,12 +241,11 @@ impl SqliteEventStore {
                 ],
             );
 
-            if let Ok(changes) = result {
-                if changes > 0 {
+            if let Ok(changes) = result
+                && changes > 0 {
                     let _ = self.tx.send(event);
                     merged += 1;
                 }
-            }
         }
 
         merged

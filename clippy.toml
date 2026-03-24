@@ -1,0 +1,2 @@
+# Allow field assignment after Default::default() — common in test setup
+# where we create default then override one field.
