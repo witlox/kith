@@ -26,6 +26,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return run_init();
     }
 
+    // Handle --status: show system state
+    if args.iter().any(|a| a == "--status" || a == "status") {
+        return run_status().await;
+    }
+
     // Load config file (if exists): ~/.config/kith/config.toml
     let config_path = find_flag(&args, "--config");
     let config =
@@ -344,6 +349,72 @@ nostr_relays = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band
     eprintln!();
     eprintln!("Start the shell:");
     eprintln!("  kith");
+
+    Ok(())
+}
+
+async fn run_status() -> Result<(), Box<dyn std::error::Error>> {
+    let hostname = hostname::get()
+        .map(|h| h.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "unknown".into());
+
+    println!("kith status");
+    println!("===========");
+    println!("  machine:  {hostname}");
+    println!(
+        "  os:       {} {}",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+
+    // Identity
+    let key_path = dirs_next::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("kith")
+        .join("identity.key");
+    if key_path.exists() {
+        let kp = load_or_create_keypair()?;
+        let pubkey = kith_common::credential::pubkey_to_hex(&kp.public_key_bytes());
+        println!("  identity: {}", &pubkey[..16]);
+    } else {
+        println!("  identity: not initialized (run kith --init)");
+    }
+
+    // Config
+    let config = kith_common::config::KithConfig::load(None).unwrap_or(None);
+    if let Some(ref cfg) = config {
+        if let Some(ref inf) = cfg.inference {
+            println!("  backend:  {} ({})", inf.backend, inf.model);
+        }
+        println!("  mesh id:  {}", cfg.mesh.identifier);
+        println!("  relays:   {}", cfg.mesh.nostr_relays.len());
+    } else {
+        println!("  config:   none (run kith --init)");
+    }
+
+    // Try connecting to daemon
+    let daemon_addr = std::env::var("KITH_DAEMON").ok();
+    if let Some(ref addr) = daemon_addr {
+        let kp = load_or_create_keypair()?;
+        match kith_shell::daemon_client::DaemonClient::connect(addr, kp).await {
+            Ok(mut client) => match client.query().await {
+                Ok(state) => println!("  daemon:   connected ({addr}) — {state}"),
+                Err(e) => println!("  daemon:   connected ({addr}) — query failed: {e}"),
+            },
+            Err(e) => println!("  daemon:   unreachable ({addr}): {e}"),
+        }
+    } else {
+        println!("  daemon:   not configured (set KITH_DAEMON=host:port)");
+    }
+
+    // Sync peers
+    let peers = std::env::var("KITH_SYNC_PEERS").unwrap_or_default();
+    if peers.is_empty() {
+        println!("  sync:     no peers configured");
+    } else {
+        let count = peers.split(',').filter(|s| !s.trim().is_empty()).count();
+        println!("  sync:     {count} peer(s) configured");
+    }
 
     Ok(())
 }

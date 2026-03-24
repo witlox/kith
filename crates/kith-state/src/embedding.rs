@@ -97,9 +97,12 @@ impl EmbeddingBackend for BagOfWordsEmbedder {
             }
         }
 
+        // Include vocabulary size in version so embeddings from different
+        // vocab states are never compared (FS-07 / INV-DAT-3)
+        let vocab_size = self.vocabulary.lock().unwrap().len();
         Ok(Embedding {
             values,
-            model_version: "bow-v1".into(),
+            model_version: format!("bow-v1-{vocab_size}"),
         })
     }
 
@@ -108,6 +111,7 @@ impl EmbeddingBackend for BagOfWordsEmbedder {
     }
 
     fn model_version(&self) -> &str {
+        // Base version — actual embeddings include vocab size suffix
         "bow-v1"
     }
 }
@@ -124,7 +128,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(emb.values.len(), 100);
-        assert_eq!(emb.model_version, "bow-v1");
+        assert!(
+            emb.model_version.starts_with("bow-v1"),
+            "version should start with bow-v1, got: {}",
+            emb.model_version
+        );
         // Should have non-zero values for the tokens
         assert!(emb.values.iter().any(|v| *v > 0.0));
     }
