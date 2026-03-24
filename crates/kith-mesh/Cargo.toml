@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 description = "WireGuard tunnel management and Nostr signaling for kith mesh"
 
+[features]
+# Enable real Nostr signaling via nostr-sdk
+nostr = ["dep:nostr-sdk", "dep:nostr"]
+# Enable real WireGuard via defguard_wireguard_rs (boringtun userspace + kernel)
+wireguard = ["dep:defguard_wireguard_rs", "dep:x25519-dalek"]
+
 [dependencies]
 kith-common = { path = "../kith-common" }
 tokio = { workspace = true }
@@ -13,6 +19,10 @@ chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
+nostr-sdk = { version = "0.44", optional = true }
+nostr = { version = "0.44", optional = true }
+defguard_wireguard_rs = { version = "0.9", optional = true }
+x25519-dalek = { version = "2", features = ["static_secrets"], optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
