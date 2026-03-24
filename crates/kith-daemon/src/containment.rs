@@ -119,7 +119,7 @@ pub struct OverlayTransaction {
     id: String,
     target: PathBuf,
     upper: PathBuf,
-    work: PathBuf,
+    _work: PathBuf, // kept alive for overlayfs — dir must exist while mounted
     mount_point: PathBuf,
     mounted: bool,
     committed: bool,
@@ -167,7 +167,7 @@ impl OverlayTransaction {
             id,
             target: target.to_path_buf(),
             upper,
-            work,
+            _work: work,
             mount_point,
             mounted: true,
             committed: false,
