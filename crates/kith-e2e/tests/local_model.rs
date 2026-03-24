@@ -17,7 +17,7 @@ use kith_common::inference::*;
 use kith_shell::inference::OpenAiCompatBackend;
 use kith_shell::tools::native_tools;
 use testcontainers::runners::AsyncRunner;
-use testcontainers::{core::WaitFor, GenericImage, ImageExt};
+use testcontainers::{GenericImage, ImageExt, core::WaitFor};
 
 const MODEL: &str = "qwen3.5:0.8b";
 
@@ -51,10 +51,7 @@ async fn pull_model(endpoint: &str) {
 /// Test: real model produces a text response via OpenAI-compatible API.
 #[tokio::test]
 async fn real_model_text_response() {
-    let container = ollama_image()
-        .start()
-        .await
-        .expect("ollama should start");
+    let container = ollama_image().start().await.expect("ollama should start");
 
     let port = container.get_host_port_ipv4(11434).await.unwrap();
     let endpoint = format!("http://127.0.0.1:{port}");
@@ -62,15 +59,13 @@ async fn real_model_text_response() {
     pull_model(&endpoint).await;
 
     // Use Ollama's OpenAI-compatible endpoint
-    let backend = OpenAiCompatBackend::new(
-        format!("{endpoint}/v1"),
-        MODEL.into(),
-        None,
-    );
+    let backend = OpenAiCompatBackend::new(format!("{endpoint}/v1"), MODEL.into(), None);
 
     let messages = vec![Message {
         role: Role::User,
-        content: MessageContent::Text("What is 2+2? Reply with just the number, nothing else.".into()),
+        content: MessageContent::Text(
+            "What is 2+2? Reply with just the number, nothing else.".into(),
+        ),
     }];
 
     let config = InferenceConfig {
@@ -113,21 +108,14 @@ async fn real_model_text_response() {
 /// Test: real model with tools available.
 #[tokio::test]
 async fn real_model_with_tools() {
-    let container = ollama_image()
-        .start()
-        .await
-        .expect("ollama should start");
+    let container = ollama_image().start().await.expect("ollama should start");
 
     let port = container.get_host_port_ipv4(11434).await.unwrap();
     let endpoint = format!("http://127.0.0.1:{port}");
 
     pull_model(&endpoint).await;
 
-    let backend = OpenAiCompatBackend::new(
-        format!("{endpoint}/v1"),
-        MODEL.into(),
-        None,
-    );
+    let backend = OpenAiCompatBackend::new(format!("{endpoint}/v1"), MODEL.into(), None);
 
     let messages = vec![
         Message {

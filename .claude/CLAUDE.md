@@ -39,18 +39,6 @@ Any phase can escalate to a prior phase:
 
 Escalations go to `/specs/escalations/` and must be resolved before the escalating phase can complete.
 
-## Usage with Claude Code
-
-### Swapping Profiles
-
-```bash
-./switch-profile.sh analyst
-./switch-profile.sh architect
-./switch-profile.sh adversary
-./switch-profile.sh implementer "kith-daemon"
-./switch-profile.sh integrator
-```
-
 ### Recommended Implementation Order
 
 1. **kith-common** — shared types, error taxonomy, trait definitions (including InferenceBackend)

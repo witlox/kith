@@ -7,8 +7,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use chrono::{DateTime, TimeZone, Utc};
-use rusqlite::{params, Connection};
-use tokio::sync::{broadcast, Mutex};
+use rusqlite::{Connection, params};
+use tokio::sync::{Mutex, broadcast};
 use tracing::{info, warn};
 
 use kith_common::event::{Event, EventCategory, EventScope};
@@ -85,10 +85,7 @@ impl SqliteEventStore {
                 if conn.load_extension_enable().is_ok() {
                     if conn.load_extension(path, None::<&str>).is_ok() {
                         // Enable CRDT on events table
-                        if conn
-                            .execute_batch("SELECT crsql_as_crr('events');")
-                            .is_ok()
-                        {
+                        if conn.execute_batch("SELECT crsql_as_crr('events');").is_ok() {
                             info!("cr-sqlite loaded — CRDT sync enabled");
                             let _ = conn.load_extension_disable();
                             return true;
@@ -140,7 +137,9 @@ impl SqliteEventStore {
     pub async fn query(&self, filter: &EventFilter) -> Vec<Event> {
         let conn = self.conn.lock().await;
 
-        let mut sql = String::from("SELECT id, machine, category, event_type, path, detail, metadata, scope, timestamp_ms FROM events WHERE 1=1");
+        let mut sql = String::from(
+            "SELECT id, machine, category, event_type, path, detail, metadata, scope, timestamp_ms FROM events WHERE 1=1",
+        );
         let mut bind_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
         if let Some(ref since) = filter.since {
@@ -174,7 +173,8 @@ impl SqliteEventStore {
             sql.push_str(&format!(" LIMIT {limit}"));
         }
 
-        let refs: Vec<&dyn rusqlite::types::ToSql> = bind_values.iter().map(|b| b.as_ref()).collect();
+        let refs: Vec<&dyn rusqlite::types::ToSql> =
+            bind_values.iter().map(|b| b.as_ref()).collect();
 
         let mut stmt = match conn.prepare(&sql) {
             Ok(s) => s,
@@ -184,9 +184,7 @@ impl SqliteEventStore {
             }
         };
 
-        let rows = stmt.query_map(refs.as_slice(), |row| {
-            Ok(row_to_event(row))
-        });
+        let rows = stmt.query_map(refs.as_slice(), |row| Ok(row_to_event(row)));
 
         match rows {
             Ok(mapped) => mapped.filter_map(|r| r.ok()).collect(),
@@ -205,8 +203,10 @@ impl SqliteEventStore {
     /// Count events.
     pub async fn len(&self) -> usize {
         let conn = self.conn.lock().await;
-        conn.query_row("SELECT COUNT(*) FROM events", [], |row| row.get::<_, i64>(0))
-            .unwrap_or(0) as usize
+        conn.query_row("SELECT COUNT(*) FROM events", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap_or(0) as usize
     }
 
     pub async fn is_empty(&self) -> bool {
@@ -258,18 +258,15 @@ impl SqliteEventStore {
             return Vec::new();
         }
         let conn = self.conn.lock().await;
-        let mut stmt = match conn.prepare(
-            "SELECT * FROM crsql_changes WHERE db_version > ?"
-        ) {
+        let mut stmt = match conn.prepare("SELECT * FROM crsql_changes WHERE db_version > ?") {
             Ok(s) => s,
             Err(_) => return Vec::new(),
         };
-        let rows: Vec<String> = match stmt.query_map(params![version], |row| {
-            Ok(format!("{:?}", row))
-        }) {
-            Ok(mapped) => mapped.filter_map(|r| r.ok()).collect(),
-            Err(_) => Vec::new(),
-        };
+        let rows: Vec<String> =
+            match stmt.query_map(params![version], |row| Ok(format!("{:?}", row))) {
+                Ok(mapped) => mapped.filter_map(|r| r.ok()).collect(),
+                Err(_) => Vec::new(),
+            };
         serde_json::to_vec(&rows).unwrap_or_default()
     }
 }
@@ -356,10 +353,12 @@ mod tests {
         store.write(drift_event("staging-1", "/a")).await;
         store.write(drift_event("prod-1", "/b")).await;
 
-        let results = store.query(&EventFilter {
-            machine: Some("staging-1".into()),
-            ..Default::default()
-        }).await;
+        let results = store
+            .query(&EventFilter {
+                machine: Some("staging-1".into()),
+                ..Default::default()
+            })
+            .await;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].machine, "staging-1");
     }
@@ -370,10 +369,12 @@ mod tests {
         store.write(drift_event("s", "/a")).await;
         store.write(exec_event("s", "cmd")).await;
 
-        let results = store.query(&EventFilter {
-            category: Some(EventCategory::Drift),
-            ..Default::default()
-        }).await;
+        let results = store
+            .query(&EventFilter {
+                category: Some(EventCategory::Drift),
+                ..Default::default()
+            })
+            .await;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].category, EventCategory::Drift);
     }
@@ -384,10 +385,12 @@ mod tests {
         store.write(drift_event("s", "/a")).await; // Public
         store.write(exec_event("s", "cmd")).await; // Ops
 
-        let public = store.query(&EventFilter {
-            scope: Some(EventScope::Public),
-            ..Default::default()
-        }).await;
+        let public = store
+            .query(&EventFilter {
+                scope: Some(EventScope::Public),
+                ..Default::default()
+            })
+            .await;
         assert_eq!(public.len(), 1);
         assert_eq!(public[0].scope, EventScope::Public);
     }
@@ -398,10 +401,12 @@ mod tests {
         for i in 0..10 {
             store.write(drift_event("s", &format!("/path-{i}"))).await;
         }
-        let results = store.query(&EventFilter {
-            limit: Some(3),
-            ..Default::default()
-        }).await;
+        let results = store
+            .query(&EventFilter {
+                limit: Some(3),
+                ..Default::default()
+            })
+            .await;
         assert_eq!(results.len(), 3);
     }
 
@@ -460,10 +465,15 @@ mod tests {
     #[tokio::test]
     async fn roundtrip_preserves_fields() {
         let store = SqliteEventStore::in_memory().unwrap();
-        let event = Event::new("staging-1", EventCategory::Drift, "drift.file_changed", "config modified")
-            .with_path("/etc/nginx/api.conf")
-            .with_metadata(serde_json::json!({"change": "modified"}))
-            .with_scope(EventScope::Public);
+        let event = Event::new(
+            "staging-1",
+            EventCategory::Drift,
+            "drift.file_changed",
+            "config modified",
+        )
+        .with_path("/etc/nginx/api.conf")
+        .with_metadata(serde_json::json!({"change": "modified"}))
+        .with_scope(EventScope::Public);
 
         let original_id = event.id.clone();
         store.write(event).await;
@@ -515,7 +525,9 @@ mod tests {
         assert_eq!(all.len(), categories.len());
 
         for (expected_cat, event_type) in &categories {
-            let found = all.iter().find(|e| e.event_type == *event_type)
+            let found = all
+                .iter()
+                .find(|e| e.event_type == *event_type)
                 .unwrap_or_else(|| panic!("missing event type: {event_type}"));
             assert_eq!(
                 &found.category, expected_cat,

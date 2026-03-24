@@ -73,7 +73,10 @@ impl WireguardBackend for InMemoryWireguard {
         endpoint: Option<SocketAddr>,
         allowed_ip: &str,
     ) -> Result<(), KithError> {
-        let mut peers = self.peers.lock().map_err(|e| KithError::MeshError(e.to_string()))?;
+        let mut peers = self
+            .peers
+            .lock()
+            .map_err(|e| KithError::MeshError(e.to_string()))?;
         // Update if already exists
         if let Some(existing) = peers.iter_mut().find(|p| p.pubkey == pubkey) {
             existing.endpoint = endpoint;
@@ -90,13 +93,19 @@ impl WireguardBackend for InMemoryWireguard {
     }
 
     async fn remove_peer(&self, pubkey: &str) -> Result<(), KithError> {
-        let mut peers = self.peers.lock().map_err(|e| KithError::MeshError(e.to_string()))?;
+        let mut peers = self
+            .peers
+            .lock()
+            .map_err(|e| KithError::MeshError(e.to_string()))?;
         peers.retain(|p| p.pubkey != pubkey);
         Ok(())
     }
 
     async fn is_peer_connected(&self, pubkey: &str) -> Result<bool, KithError> {
-        let peers = self.peers.lock().map_err(|e| KithError::MeshError(e.to_string()))?;
+        let peers = self
+            .peers
+            .lock()
+            .map_err(|e| KithError::MeshError(e.to_string()))?;
         Ok(peers.iter().any(|p| p.pubkey == pubkey && p.connected))
     }
 
@@ -112,9 +121,13 @@ mod tests {
     #[tokio::test]
     async fn add_and_check_peer() {
         let wg = InMemoryWireguard::new("my-pub-key");
-        wg.add_peer("peer-key", Some("10.0.0.1:51820".parse().unwrap()), "10.47.0.2/32")
-            .await
-            .unwrap();
+        wg.add_peer(
+            "peer-key",
+            Some("10.0.0.1:51820".parse().unwrap()),
+            "10.47.0.2/32",
+        )
+        .await
+        .unwrap();
         assert_eq!(wg.peer_count(), 1);
         assert!(!wg.is_peer_connected("peer-key").await.unwrap());
     }
@@ -138,12 +151,20 @@ mod tests {
     #[tokio::test]
     async fn add_peer_updates_existing() {
         let wg = InMemoryWireguard::new("my-pub-key");
-        wg.add_peer("peer-key", Some("10.0.0.1:51820".parse().unwrap()), "10.47.0.2/32")
-            .await
-            .unwrap();
-        wg.add_peer("peer-key", Some("10.0.0.2:51820".parse().unwrap()), "10.47.0.2/32")
-            .await
-            .unwrap();
+        wg.add_peer(
+            "peer-key",
+            Some("10.0.0.1:51820".parse().unwrap()),
+            "10.47.0.2/32",
+        )
+        .await
+        .unwrap();
+        wg.add_peer(
+            "peer-key",
+            Some("10.0.0.2:51820".parse().unwrap()),
+            "10.47.0.2/32",
+        )
+        .await
+        .unwrap();
         assert_eq!(wg.peer_count(), 1); // Updated, not duplicated
     }
 

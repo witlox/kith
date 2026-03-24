@@ -4,8 +4,8 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use futures::stream;
 use futures::Stream;
+use futures::stream;
 
 use kith_common::error::InferenceError;
 use kith_common::inference::*;
@@ -153,7 +153,10 @@ mod tests {
     #[tokio::test]
     async fn mock_returns_tool_call() {
         let backend = MockInferenceBackend::new("test");
-        backend.queue_tool_call("remote", serde_json::json!({"host": "staging-1", "command": "docker ps"}));
+        backend.queue_tool_call(
+            "remote",
+            serde_json::json!({"host": "staging-1", "command": "docker ps"}),
+        );
 
         let mut stream = backend
             .complete(&[], &[], &InferenceConfig::default())

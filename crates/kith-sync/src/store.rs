@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 use kith_common::event::{Event, EventCategory, EventScope};
 
@@ -290,8 +290,13 @@ mod tests {
         store.write(drift_event("s", "/a")).await;
         store
             .write(
-                Event::new("s", EventCategory::Drift, "drift.service_stopped", "nginx stopped")
-                    .with_scope(EventScope::Public),
+                Event::new(
+                    "s",
+                    EventCategory::Drift,
+                    "drift.service_stopped",
+                    "nginx stopped",
+                )
+                .with_scope(EventScope::Public),
             )
             .await;
 

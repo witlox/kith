@@ -19,7 +19,12 @@ use kith_sync::store::{EventFilter, EventStore};
 #[derive(Debug)]
 pub enum AgentOutput {
     /// Command was pass-through — executed directly, here's the output.
-    PassThrough { command: String, stdout: String, stderr: String, exit_code: i32 },
+    PassThrough {
+        command: String,
+        stdout: String,
+        stderr: String,
+        exit_code: i32,
+    },
     /// LLM produced text response.
     Text(String),
     /// LLM produced tool calls that were executed.
@@ -53,10 +58,7 @@ pub struct TodoItem {
 }
 
 impl Agent {
-    pub fn new(
-        backend: Box<dyn InferenceBackend>,
-        system_prompt: String,
-    ) -> Self {
+    pub fn new(backend: Box<dyn InferenceBackend>, system_prompt: String) -> Self {
         let mut context = ConversationContext::new(50);
         context.set_system_prompt(system_prompt);
 
@@ -96,9 +98,7 @@ impl Agent {
                 }
                 self.exec_local(&cmd).await
             }
-            InputClass::Intent(text) => {
-                self.process_intent(&text).await
-            }
+            InputClass::Intent(text) => self.process_intent(&text).await,
         }
     }
 
@@ -120,17 +120,18 @@ impl Agent {
         let tool_defs = tools::native_tools();
         let config = InferenceConfig::default();
 
-        let stream_result = self.backend.complete(
-            self.context.messages(),
-            &tool_defs,
-            &config,
-        ).await;
+        let stream_result = self
+            .backend
+            .complete(self.context.messages(), &tool_defs, &config)
+            .await;
 
         let mut stream = match stream_result {
             Ok(s) => s,
             Err(InferenceError::Unreachable(_) | InferenceError::Timeout(_)) => {
                 warn!("inference unavailable — pass-through mode");
-                return AgentOutput::Degraded { input: input.into() };
+                return AgentOutput::Degraded {
+                    input: input.into(),
+                };
             }
             Err(e) => return AgentOutput::Error(e.to_string()),
         };
@@ -155,12 +156,14 @@ impl Agent {
         }
 
         if tool_calls.is_empty() {
-            self.context.add_assistant(MessageContent::Text(text_output.clone()));
+            self.context
+                .add_assistant(MessageContent::Text(text_output.clone()));
             return AgentOutput::Text(text_output);
         }
 
         // Dispatch tool calls
-        self.context.add_assistant(MessageContent::ToolCalls(tool_calls.clone()));
+        self.context
+            .add_assistant(MessageContent::ToolCalls(tool_calls.clone()));
         let mut results = Vec::new();
 
         for tc in &tool_calls {
@@ -178,15 +181,26 @@ impl Agent {
     async fn dispatch_tool(&mut self, tc: &ToolCall) -> String {
         match tc.name.as_str() {
             "remote" => {
-                let _host = tc.arguments.get("host").and_then(|v| v.as_str()).unwrap_or("unknown");
-                let command = tc.arguments.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                let _host = tc
+                    .arguments
+                    .get("host")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                let command = tc
+                    .arguments
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if let Some(ref mut daemon) = self.daemon {
                     match daemon.exec(command).await {
                         Ok(result) => {
                             if result.exit_code == 0 {
                                 result.stdout
                             } else {
-                                format!("exit code {}: {}{}", result.exit_code, result.stdout, result.stderr)
+                                format!(
+                                    "exit code {}: {}{}",
+                                    result.exit_code, result.stdout, result.stderr
+                                )
                             }
                         }
                         Err(e) => format!("error: {e}"),
@@ -200,36 +214,67 @@ impl Agent {
                 }
             }
             "fleet_query" => {
-                let query = tc.arguments.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                let events = self.event_store.query(&EventFilter {
-                    limit: Some(20),
-                    ..Default::default()
-                }).await;
+                let query = tc
+                    .arguments
+                    .get("query")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let events = self
+                    .event_store
+                    .query(&EventFilter {
+                        limit: Some(20),
+                        ..Default::default()
+                    })
+                    .await;
                 if events.is_empty() {
                     format!("no events in store for query: {query}")
                 } else {
-                    let summaries: Vec<String> = events.iter().map(|e| {
-                        format!("[{}] {} on {}: {}", e.event_type, e.category, e.machine, e.detail)
-                    }).collect();
+                    let summaries: Vec<String> = events
+                        .iter()
+                        .map(|e| {
+                            format!(
+                                "[{}] {} on {}: {}",
+                                e.event_type, e.category, e.machine, e.detail
+                            )
+                        })
+                        .collect();
                     summaries.join("\n")
                 }
             }
             "retrieve" => {
-                let query = tc.arguments.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                let query = tc
+                    .arguments
+                    .get("query")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let all = self.event_store.all().await;
                 let results = KeywordRetriever::search(&all, query, &EventScope::Ops, 10);
                 if results.is_empty() {
                     format!("no results for: {query}")
                 } else {
-                    let summaries: Vec<String> = results.iter().map(|r| {
-                        format!("[{:.1}] {} on {}: {}", r.score, r.event.event_type, r.event.machine, r.event.detail)
-                    }).collect();
+                    let summaries: Vec<String> = results
+                        .iter()
+                        .map(|r| {
+                            format!(
+                                "[{:.1}] {} on {}: {}",
+                                r.score, r.event.event_type, r.event.machine, r.event.detail
+                            )
+                        })
+                        .collect();
                     summaries.join("\n")
                 }
             }
             "apply" => {
-                let host = tc.arguments.get("host").and_then(|v| v.as_str()).unwrap_or("local");
-                let command = tc.arguments.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                let host = tc
+                    .arguments
+                    .get("host")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("local");
+                let command = tc
+                    .arguments
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if let Some(ref mut daemon) = self.daemon {
                     match daemon.apply(command, 600).await {
                         Ok(id) => format!("applied on {host}, pending_id: {id}"),
@@ -264,25 +309,43 @@ impl Agent {
                 }
             }
             "todo" => {
-                let action = tc.arguments.get("action").and_then(|v| v.as_str()).unwrap_or("list");
-                let text = tc.arguments.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                let action = tc
+                    .arguments
+                    .get("action")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("list");
+                let text = tc
+                    .arguments
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 match action {
                     "add" => {
-                        self.todos.push(TodoItem { text: text.into(), done: false });
+                        self.todos.push(TodoItem {
+                            text: text.into(),
+                            done: false,
+                        });
                         format!("added: {text}")
                     }
                     "list" => {
                         if self.todos.is_empty() {
                             "no todos".into()
                         } else {
-                            self.todos.iter().enumerate().map(|(i, t)| {
-                                let mark = if t.done { "x" } else { " " };
-                                format!("[{mark}] {}: {}", i + 1, t.text)
-                            }).collect::<Vec<_>>().join("\n")
+                            self.todos
+                                .iter()
+                                .enumerate()
+                                .map(|(i, t)| {
+                                    let mark = if t.done { "x" } else { " " };
+                                    format!("[{mark}] {}: {}", i + 1, t.text)
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n")
                         }
                     }
                     "done" => {
-                        if let Some(item) = self.todos.iter_mut().find(|t| t.text == text && !t.done) {
+                        if let Some(item) =
+                            self.todos.iter_mut().find(|t| t.text == text && !t.done)
+                        {
                             item.done = true;
                             format!("done: {text}")
                         } else {
@@ -294,7 +357,7 @@ impl Agent {
                         self.todos.clear();
                         format!("cleared {count} todos")
                     }
-                    _ => format!("unknown todo action: {action}")
+                    _ => format!("unknown todo action: {action}"),
                 }
             }
             other => format!("unknown tool: {other}"),
@@ -308,10 +371,7 @@ mod tests {
     use crate::mock_backend::MockInferenceBackend;
 
     fn make_agent(backend: MockInferenceBackend) -> Agent {
-        Agent::new(
-            Box::new(backend),
-            "you are a test agent".into(),
-        )
+        Agent::new(Box::new(backend), "you are a test agent".into())
     }
 
     #[tokio::test]
@@ -321,7 +381,9 @@ mod tests {
 
         let output = agent.process("echo hello").await;
         match output {
-            AgentOutput::PassThrough { stdout, exit_code, .. } => {
+            AgentOutput::PassThrough {
+                stdout, exit_code, ..
+            } => {
                 assert_eq!(stdout.trim(), "hello");
                 assert_eq!(exit_code, 0);
             }
@@ -359,7 +421,10 @@ mod tests {
     #[tokio::test]
     async fn intent_produces_tool_call() {
         let backend = MockInferenceBackend::new("test");
-        backend.queue_tool_call("remote", serde_json::json!({"host": "local", "command": "echo tool-test"}));
+        backend.queue_tool_call(
+            "remote",
+            serde_json::json!({"host": "local", "command": "echo tool-test"}),
+        );
         let mut agent = make_agent(backend);
 
         let output = agent.process("check what's running").await;
@@ -403,6 +468,9 @@ mod tests {
         let mut agent = make_agent(backend);
 
         let output = agent.process("").await;
-        assert!(matches!(output, AgentOutput::PassThrough { exit_code: 0, .. }));
+        assert!(matches!(
+            output,
+            AgentOutput::PassThrough { exit_code: 0, .. }
+        ));
     }
 }

@@ -65,7 +65,10 @@ enum AgentResult {
 #[tokio::test]
 async fn e2e_model_swap_same_workflow() {
     let classifier = InputClassifier::new(
-        ["ls", "git", "docker"].iter().map(|s| s.to_string()).collect(),
+        ["ls", "git", "docker"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
     );
 
     // Backend A: simulates "Claude"
@@ -89,12 +92,24 @@ async fn e2e_model_swap_same_workflow() {
     // Run same workflow with backend A
     let mut ctx_a = ConversationContext::new(100);
     ctx_a.set_system_prompt(prompt.clone());
-    let result_a = agent_turn(&backend_a, &classifier, &mut ctx_a, "check what's running on staging-1").await;
+    let result_a = agent_turn(
+        &backend_a,
+        &classifier,
+        &mut ctx_a,
+        "check what's running on staging-1",
+    )
+    .await;
 
     // Run same workflow with backend B
     let mut ctx_b = ConversationContext::new(100);
     ctx_b.set_system_prompt(prompt);
-    let result_b = agent_turn(&backend_b, &classifier, &mut ctx_b, "check what's running on staging-1").await;
+    let result_b = agent_turn(
+        &backend_b,
+        &classifier,
+        &mut ctx_b,
+        "check what's running on staging-1",
+    )
+    .await;
 
     // Both should produce a remote() tool call
     match (&result_a, &result_b) {
@@ -122,7 +137,10 @@ async fn e2e_model_swap_same_workflow() {
 #[tokio::test]
 async fn e2e_passthrough_independent_of_backend() {
     let classifier = InputClassifier::new(
-        ["ls", "git", "docker"].iter().map(|s| s.to_string()).collect(),
+        ["ls", "git", "docker"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
     );
 
     let backend = MockInferenceBackend::new("any-model");

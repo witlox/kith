@@ -11,10 +11,9 @@ use kith_sync::store::EventStore;
 #[tokio::test]
 async fn e2e_shell_to_daemon_exec() {
     let (addr, kp) = helpers::start_daemon("staging-1").await;
-    let mut client =
-        DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
-            .await
-            .unwrap();
+    let mut client = DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
+        .await
+        .unwrap();
 
     let result = client.exec("echo e2e-test && echo done").await.unwrap();
     assert!(result.stdout.contains("e2e-test"));
@@ -26,10 +25,9 @@ async fn e2e_shell_to_daemon_exec() {
 #[tokio::test]
 async fn e2e_apply_commit_via_shell() {
     let (addr, kp) = helpers::start_daemon("staging-1").await;
-    let mut client =
-        DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
-            .await
-            .unwrap();
+    let mut client = DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
+        .await
+        .unwrap();
 
     // Apply
     let pending_id = client.apply("docker compose up -d", 600).await.unwrap();
@@ -46,10 +44,9 @@ async fn e2e_apply_commit_via_shell() {
 #[tokio::test]
 async fn e2e_apply_rollback_via_shell() {
     let (addr, kp) = helpers::start_daemon("staging-1").await;
-    let mut client =
-        DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
-            .await
-            .unwrap();
+    let mut client = DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
+        .await
+        .unwrap();
 
     let pending_id = client.apply("risky change", 600).await.unwrap();
     assert!(client.rollback(&pending_id).await.unwrap());
@@ -126,14 +123,12 @@ async fn e2e_multi_daemon() {
     let (addr1, kp1) = helpers::start_daemon("staging-1").await;
     let (addr2, kp2) = helpers::start_daemon("prod-1").await;
 
-    let mut client1 =
-        DaemonClient::connect(&addr1, Keypair::from_secret(&kp1.secret_bytes()))
-            .await
-            .unwrap();
-    let mut client2 =
-        DaemonClient::connect(&addr2, Keypair::from_secret(&kp2.secret_bytes()))
-            .await
-            .unwrap();
+    let mut client1 = DaemonClient::connect(&addr1, Keypair::from_secret(&kp1.secret_bytes()))
+        .await
+        .unwrap();
+    let mut client2 = DaemonClient::connect(&addr2, Keypair::from_secret(&kp2.secret_bytes()))
+        .await
+        .unwrap();
 
     let state1 = client1.query().await.unwrap();
     let state2 = client2.query().await.unwrap();

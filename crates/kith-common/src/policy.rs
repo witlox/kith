@@ -67,9 +67,10 @@ impl MachinePolicy {
     pub fn evaluate(scope: &Scope, action: &ActionCategory) -> PolicyDecision {
         match (scope, action) {
             // Viewers can only query and read events
-            (Scope::Viewer, ActionCategory::Query | ActionCategory::Events | ActionCategory::Capabilities) => {
-                PolicyDecision::Allow
-            }
+            (
+                Scope::Viewer,
+                ActionCategory::Query | ActionCategory::Events | ActionCategory::Capabilities,
+            ) => PolicyDecision::Allow,
             (Scope::Viewer, _) => PolicyDecision::Deny {
                 reason: format!("viewer scope cannot perform {action:?}"),
             },

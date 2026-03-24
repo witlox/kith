@@ -100,10 +100,8 @@ fn package_changed(world: &mut KithWorld) {
 
 #[given(expr = "the blacklist includes {string} and {string}")]
 fn set_blacklist(world: &mut KithWorld, p1: String, p2: String) {
-    world.drift_evaluator = kith_daemon::drift::DriftEvaluator::new(
-        vec![p1, p2],
-        DriftWeights::default(),
-    );
+    world.drift_evaluator =
+        kith_daemon::drift::DriftEvaluator::new(vec![p1, p2], DriftWeights::default());
 }
 
 #[when(expr = "a file is modified at {string}")]
@@ -120,13 +118,24 @@ fn file_modified_at(world: &mut KithWorld, path: String) {
 
 #[then("no drift event is generated")]
 fn no_drift_event(world: &mut KithWorld) {
-    assert!(!world.backend_was_called, "event should have been blacklisted");
+    assert!(
+        !world.backend_was_called,
+        "event should have been blacklisted"
+    );
 }
 
-#[given(expr = "drift weights are configured as files={float}, services={float}, network={float}, packages={float}")]
+#[given(
+    expr = "drift weights are configured as files={float}, services={float}, network={float}, packages={float}"
+)]
 fn set_weights(world: &mut KithWorld, f: f64, s: f64, n: f64, p: f64) {
-    world.drift_weights = DriftWeights { files: f, services: s, network: n, packages: p };
-    world.drift_evaluator = kith_daemon::drift::DriftEvaluator::new(vec![], world.drift_weights.clone());
+    world.drift_weights = DriftWeights {
+        files: f,
+        services: s,
+        network: n,
+        packages: p,
+    };
+    world.drift_evaluator =
+        kith_daemon::drift::DriftEvaluator::new(vec![], world.drift_weights.clone());
 }
 
 #[given(expr = "{int} file changes and {int} service change have been detected")]
@@ -152,16 +161,37 @@ fn detect_changes(world: &mut KithWorld, files: u32, services: u32) {
 #[then(expr = "the squared drift magnitude is {float}")]
 fn check_magnitude(world: &mut KithWorld, expected: f64) {
     let actual = world.drift_evaluator.magnitude_sq();
-    assert!((actual - expected).abs() < 0.01, "expected {expected}, got {actual}");
+    assert!(
+        (actual - expected).abs() < 0.01,
+        "expected {expected}, got {actual}"
+    );
 }
 
-#[then(expr = "the drift vector shows files={float}, services={float}, network={float}, packages={float}")]
+#[then(
+    expr = "the drift vector shows files={float}, services={float}, network={float}, packages={float}"
+)]
 fn check_vector(world: &mut KithWorld, f: f64, s: f64, n: f64, p: f64) {
     let dv = world.drift_evaluator.drift_vector();
-    assert!((dv.files - f).abs() < 0.01, "files: expected {f}, got {}", dv.files);
-    assert!((dv.services - s).abs() < 0.01, "services: expected {s}, got {}", dv.services);
-    assert!((dv.network - n).abs() < 0.01, "network: expected {n}, got {}", dv.network);
-    assert!((dv.packages - p).abs() < 0.01, "packages: expected {p}, got {}", dv.packages);
+    assert!(
+        (dv.files - f).abs() < 0.01,
+        "files: expected {f}, got {}",
+        dv.files
+    );
+    assert!(
+        (dv.services - s).abs() < 0.01,
+        "services: expected {s}, got {}",
+        dv.services
+    );
+    assert!(
+        (dv.network - n).abs() < 0.01,
+        "network: expected {n}, got {}",
+        dv.network
+    );
+    assert!(
+        (dv.packages - p).abs() < 0.01,
+        "packages: expected {p}, got {}",
+        dv.packages
+    );
 }
 
 #[given(expr = "drift has been detected on {string}")]

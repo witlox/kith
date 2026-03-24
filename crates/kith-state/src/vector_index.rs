@@ -52,7 +52,11 @@ impl VectorIndex {
             })
             .collect();
 
-        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         scored.truncate(k);
         scored
     }
@@ -103,8 +107,7 @@ mod tests {
     use kith_common::event::{Event, EventCategory, EventScope};
 
     fn make_event(detail: &str) -> Event {
-        Event::new("test", EventCategory::System, "test.event", detail)
-            .with_scope(EventScope::Ops)
+        Event::new("test", EventCategory::System, "test.event", detail).with_scope(EventScope::Ops)
     }
 
     fn make_embedding(values: Vec<f32>) -> Embedding {
@@ -118,9 +121,18 @@ mod tests {
     fn insert_and_search() {
         let mut index = VectorIndex::new();
 
-        index.insert(make_event("docker running"), make_embedding(vec![1.0, 0.0, 0.0]));
-        index.insert(make_event("nginx config"), make_embedding(vec![0.0, 1.0, 0.0]));
-        index.insert(make_event("docker stopped"), make_embedding(vec![0.9, 0.1, 0.0]));
+        index.insert(
+            make_event("docker running"),
+            make_embedding(vec![1.0, 0.0, 0.0]),
+        );
+        index.insert(
+            make_event("nginx config"),
+            make_embedding(vec![0.0, 1.0, 0.0]),
+        );
+        index.insert(
+            make_event("docker stopped"),
+            make_embedding(vec![0.9, 0.1, 0.0]),
+        );
 
         let query = make_embedding(vec![1.0, 0.0, 0.0]); // closest to "docker running"
         let results = index.search(&query, 2);

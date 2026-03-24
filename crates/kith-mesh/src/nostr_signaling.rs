@@ -20,10 +20,7 @@ pub struct NostrSignaling {
 
 impl NostrSignaling {
     /// Create and connect to relays.
-    pub async fn new(
-        mesh_identifier: String,
-        relay_urls: &[String],
-    ) -> Result<Self, KithError> {
+    pub async fn new(mesh_identifier: String, relay_urls: &[String]) -> Result<Self, KithError> {
         let keys = Keys::generate();
         let client = nostr_sdk::Client::new(keys);
 

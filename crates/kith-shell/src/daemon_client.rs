@@ -188,12 +188,12 @@ impl DaemonClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kith_common::policy::{MachinePolicy, Scope};
     use kith_daemon::audit::AuditLog;
     use kith_daemon::commit::CommitWindowManager;
     use kith_daemon::policy::PolicyEvaluator;
     use kith_daemon::proto::kith_daemon_server::KithDaemonServer;
     use kith_daemon::service::KithDaemonService;
-    use kith_common::policy::{MachinePolicy, Scope};
     use std::time::Duration;
 
     /// Start a daemon in-process on a random port, return the address.

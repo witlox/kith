@@ -27,7 +27,9 @@ fn agent_calls_remote_when(world: &mut KithWorld, machine: String, command: Stri
     let user = world.current_user.as_deref().unwrap_or("unknown");
     world.last_policy_decision = Some(match world.policy.scope_for(user) {
         Some(scope) => MachinePolicy::evaluate(&scope, &ActionCategory::Exec),
-        None => PolicyDecision::Deny { reason: "unknown user".into() },
+        None => PolicyDecision::Deny {
+            reason: "unknown user".into(),
+        },
     });
 }
 
@@ -38,7 +40,9 @@ fn agent_calls_remote_then(world: &mut KithWorld, _machine: String, _command: St
     let user = world.current_user.as_deref().unwrap_or("unknown");
     world.last_policy_decision = Some(match world.policy.scope_for(user) {
         Some(scope) => MachinePolicy::evaluate(&scope, &ActionCategory::Exec),
-        None => PolicyDecision::Deny { reason: "unknown user".into() },
+        None => PolicyDecision::Deny {
+            reason: "unknown user".into(),
+        },
     });
 }
 
@@ -60,8 +64,10 @@ fn audit_written(_world: &mut KithWorld, _machine: String) {}
 fn daemon_rejects(world: &mut KithWorld, _machine: String, expected: String) {
     match &world.last_policy_decision {
         Some(PolicyDecision::Deny { reason }) => {
-            assert!(reason.contains(&expected) || expected.contains("policy denied"),
-                "expected '{expected}', got '{reason}'");
+            assert!(
+                reason.contains(&expected) || expected.contains("policy denied"),
+                "expected '{expected}', got '{reason}'"
+            );
         }
         other => panic!("expected Deny, got {other:?}"),
     }

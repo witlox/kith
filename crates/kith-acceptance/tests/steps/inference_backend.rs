@@ -17,12 +17,17 @@ fn endpoint_set(world: &mut KithWorld, _endpoint: String) {}
 
 #[when("the user types an intent")]
 fn user_types_intent(world: &mut KithWorld) {
-    world.last_classification = Some(kith_shell::classify::InputClass::Intent("test intent".into()));
+    world.last_classification = Some(kith_shell::classify::InputClass::Intent(
+        "test intent".into(),
+    ));
 }
 
 #[then("kith shell calls InferenceBackend with the input and available tools")]
 fn calls_backend(world: &mut KithWorld) {
-    assert!(matches!(world.last_classification, Some(kith_shell::classify::InputClass::Intent(_))));
+    assert!(matches!(
+        world.last_classification,
+        Some(kith_shell::classify::InputClass::Intent(_))
+    ));
 }
 
 #[then("the backend streams a response with tool calls")]

@@ -31,14 +31,13 @@ pub async fn exec_command_with_timeout(
     command: &str,
     timeout: Duration,
 ) -> Result<ExecResult, KithError> {
-    let fut = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .output();
+    let fut = Command::new("sh").arg("-c").arg(command).output();
 
     let output = tokio::time::timeout(timeout, fut)
         .await
-        .map_err(|_| KithError::Internal(format!("command timed out after {timeout:?}: {command}")))?
+        .map_err(|_| {
+            KithError::Internal(format!("command timed out after {timeout:?}: {command}"))
+        })?
         .map_err(|e| KithError::Internal(format!("failed to execute command: {e}")))?;
 
     let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -106,6 +105,9 @@ mod tests {
         let result = exec_command_with_timeout("sleep 10", Duration::from_millis(100)).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("timed out"), "expected timeout error, got: {err}");
+        assert!(
+            err.contains("timed out"),
+            "expected timeout error, got: {err}"
+        );
     }
 }

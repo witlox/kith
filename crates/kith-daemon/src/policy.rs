@@ -32,7 +32,8 @@ impl PolicyEvaluator {
         let now_ms = chrono::Utc::now().timestamp_millis();
 
         // Step 1: Verify credential signature + freshness
-        let pubkey = credential::verify_credential(cred, request_hash, now_ms, self.max_clock_skew_ms)?;
+        let pubkey =
+            credential::verify_credential(cred, request_hash, now_ms, self.max_clock_skew_ms)?;
         let pubkey_hex = credential::pubkey_to_hex(&pubkey);
 
         // Step 2: Look up scope from policy (never from request)
@@ -136,7 +137,9 @@ mod tests {
         let cred = unknown_kp.sign(now, hash);
 
         let result = eval.evaluate(&cred, hash, &ActionCategory::Exec).unwrap();
-        assert!(matches!(result, PolicyDecision::Deny { reason } if reason.contains("unknown identity")));
+        assert!(
+            matches!(result, PolicyDecision::Deny { reason } if reason.contains("unknown identity"))
+        );
     }
 
     #[test]

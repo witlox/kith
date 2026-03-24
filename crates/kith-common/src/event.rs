@@ -83,10 +83,15 @@ mod tests {
 
     #[test]
     fn event_builder() {
-        let e = Event::new("staging-1", EventCategory::Drift, "drift.file_changed", "config modified")
-            .with_path("/etc/nginx/conf.d/api.conf")
-            .with_scope(EventScope::Public)
-            .with_metadata(serde_json::json!({"change": "modified"}));
+        let e = Event::new(
+            "staging-1",
+            EventCategory::Drift,
+            "drift.file_changed",
+            "config modified",
+        )
+        .with_path("/etc/nginx/conf.d/api.conf")
+        .with_scope(EventScope::Public)
+        .with_metadata(serde_json::json!({"change": "modified"}));
 
         assert_eq!(e.machine, "staging-1");
         assert_eq!(e.category, EventCategory::Drift);
@@ -98,7 +103,12 @@ mod tests {
 
     #[test]
     fn event_serialization_roundtrip() {
-        let e = Event::new("dev-mac", EventCategory::Exec, "exec.command", "ran docker ps");
+        let e = Event::new(
+            "dev-mac",
+            EventCategory::Exec,
+            "exec.command",
+            "ran docker ps",
+        );
         let json = serde_json::to_string(&e).unwrap();
         let parsed: Event = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.machine, "dev-mac");

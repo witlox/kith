@@ -24,7 +24,10 @@ pub trait SignalingBackend: Send + Sync {
     async fn publish(&self, event: &PeerDiscoveryEvent) -> Result<(), KithError>;
 
     /// Fetch all peer events matching our mesh identifier.
-    async fn fetch_peers(&self, mesh_identifier: &str) -> Result<Vec<PeerDiscoveryEvent>, KithError>;
+    async fn fetch_peers(
+        &self,
+        mesh_identifier: &str,
+    ) -> Result<Vec<PeerDiscoveryEvent>, KithError>;
 }
 
 /// In-memory signaling backend for testing.
@@ -49,7 +52,10 @@ impl Default for InMemorySignaling {
 #[async_trait]
 impl SignalingBackend for InMemorySignaling {
     async fn publish(&self, event: &PeerDiscoveryEvent) -> Result<(), KithError> {
-        let mut events = self.events.lock().map_err(|e| KithError::Internal(e.to_string()))?;
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|e| KithError::Internal(e.to_string()))?;
         // Parameterized replaceable: remove existing event from same machine
         events.retain(|(_, e)| e.machine_id != event.machine_id);
         // Use machine_id as the mesh identifier tag for simplicity in mock
@@ -57,8 +63,14 @@ impl SignalingBackend for InMemorySignaling {
         Ok(())
     }
 
-    async fn fetch_peers(&self, _mesh_identifier: &str) -> Result<Vec<PeerDiscoveryEvent>, KithError> {
-        let events = self.events.lock().map_err(|e| KithError::Internal(e.to_string()))?;
+    async fn fetch_peers(
+        &self,
+        _mesh_identifier: &str,
+    ) -> Result<Vec<PeerDiscoveryEvent>, KithError> {
+        let events = self
+            .events
+            .lock()
+            .map_err(|e| KithError::Internal(e.to_string()))?;
         Ok(events.iter().map(|(_, e)| e.clone()).collect())
     }
 }
@@ -72,7 +84,9 @@ impl SharedSignaling {
     pub fn new() -> (Self, Self) {
         let inner = std::sync::Arc::new(InMemorySignaling::new());
         (
-            Self { inner: inner.clone() },
+            Self {
+                inner: inner.clone(),
+            },
             Self { inner },
         )
     }
@@ -90,7 +104,10 @@ impl SignalingBackend for SharedSignaling {
         self.inner.publish(event).await
     }
 
-    async fn fetch_peers(&self, mesh_identifier: &str) -> Result<Vec<PeerDiscoveryEvent>, KithError> {
+    async fn fetch_peers(
+        &self,
+        mesh_identifier: &str,
+    ) -> Result<Vec<PeerDiscoveryEvent>, KithError> {
         self.inner.fetch_peers(mesh_identifier).await
     }
 }
@@ -112,7 +129,10 @@ mod tests {
     #[tokio::test]
     async fn publish_and_fetch() {
         let backend = InMemorySignaling::new();
-        backend.publish(&make_discovery_event("staging-1")).await.unwrap();
+        backend
+            .publish(&make_discovery_event("staging-1"))
+            .await
+            .unwrap();
         let peers = backend.fetch_peers("mesh-id").await.unwrap();
         assert_eq!(peers.len(), 1);
         assert_eq!(peers[0].machine_id, "staging-1");
@@ -135,9 +155,18 @@ mod tests {
     #[tokio::test]
     async fn multiple_machines() {
         let backend = InMemorySignaling::new();
-        backend.publish(&make_discovery_event("dev-mac")).await.unwrap();
-        backend.publish(&make_discovery_event("staging-1")).await.unwrap();
-        backend.publish(&make_discovery_event("prod-1")).await.unwrap();
+        backend
+            .publish(&make_discovery_event("dev-mac"))
+            .await
+            .unwrap();
+        backend
+            .publish(&make_discovery_event("staging-1"))
+            .await
+            .unwrap();
+        backend
+            .publish(&make_discovery_event("prod-1"))
+            .await
+            .unwrap();
 
         let peers = backend.fetch_peers("mesh-id").await.unwrap();
         assert_eq!(peers.len(), 3);
@@ -147,8 +176,14 @@ mod tests {
     async fn shared_signaling_visible_across_nodes() {
         let (node_a, node_b) = SharedSignaling::new();
 
-        node_a.publish(&make_discovery_event("dev-mac")).await.unwrap();
-        node_b.publish(&make_discovery_event("staging-1")).await.unwrap();
+        node_a
+            .publish(&make_discovery_event("dev-mac"))
+            .await
+            .unwrap();
+        node_b
+            .publish(&make_discovery_event("staging-1"))
+            .await
+            .unwrap();
 
         // Both nodes see both peers
         let peers_a = node_a.fetch_peers("mesh").await.unwrap();

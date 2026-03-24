@@ -21,8 +21,7 @@ pub async fn start_daemon(machine_name: &str) -> (String, Keypair) {
     let evaluator = PolicyEvaluator::new(policy, machine_name.into());
     let audit = AuditLog::new(machine_name);
     let commit = CommitWindowManager::new(Duration::from_secs(600));
-    let service =
-        KithDaemonService::new(evaluator, audit, commit, machine_name.into());
+    let service = KithDaemonService::new(evaluator, audit, commit, machine_name.into());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

@@ -169,23 +169,29 @@ async fn e2e_partition_and_recovery() {
     // Both stores accumulate events independently (partition)
     for i in 0..5 {
         store_a
-            .write(Event::new(
-                "dev-mac",
-                EventCategory::Exec,
-                "exec.command",
-                &format!("command-a-{i}"),
-            ).with_scope(EventScope::Ops))
+            .write(
+                Event::new(
+                    "dev-mac",
+                    EventCategory::Exec,
+                    "exec.command",
+                    &format!("command-a-{i}"),
+                )
+                .with_scope(EventScope::Ops),
+            )
             .await;
     }
 
     for i in 0..3 {
         store_b
-            .write(Event::new(
-                "staging-1",
-                EventCategory::Exec,
-                "exec.command",
-                &format!("command-b-{i}"),
-            ).with_scope(EventScope::Ops))
+            .write(
+                Event::new(
+                    "staging-1",
+                    EventCategory::Exec,
+                    "exec.command",
+                    &format!("command-b-{i}"),
+                )
+                .with_scope(EventScope::Ops),
+            )
             .await;
     }
 
@@ -220,8 +226,10 @@ async fn e2e_merge_idempotent() {
     let store_b = EventStore::new();
 
     store_a
-        .write(Event::new("dev-mac", EventCategory::Exec, "exec.command", "cmd-1")
-            .with_scope(EventScope::Ops))
+        .write(
+            Event::new("dev-mac", EventCategory::Exec, "exec.command", "cmd-1")
+                .with_scope(EventScope::Ops),
+        )
         .await;
 
     // First merge
@@ -246,20 +254,26 @@ async fn e2e_long_partition_recovery() {
     // Simulate 24h of events on each side (100 events each)
     for i in 0..100 {
         store_a
-            .write(Event::new(
-                "dev-mac",
-                EventCategory::System,
-                "system.heartbeat",
-                &format!("heartbeat-a-{i}"),
-            ).with_scope(EventScope::Ops))
+            .write(
+                Event::new(
+                    "dev-mac",
+                    EventCategory::System,
+                    "system.heartbeat",
+                    &format!("heartbeat-a-{i}"),
+                )
+                .with_scope(EventScope::Ops),
+            )
             .await;
         store_b
-            .write(Event::new(
-                "staging-1",
-                EventCategory::System,
-                "system.heartbeat",
-                &format!("heartbeat-b-{i}"),
-            ).with_scope(EventScope::Ops))
+            .write(
+                Event::new(
+                    "staging-1",
+                    EventCategory::System,
+                    "system.heartbeat",
+                    &format!("heartbeat-b-{i}"),
+                )
+                .with_scope(EventScope::Ops),
+            )
             .await;
     }
 

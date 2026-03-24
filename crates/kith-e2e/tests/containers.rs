@@ -12,7 +12,7 @@ use std::time::Duration;
 use kith_common::credential::Keypair;
 use kith_shell::daemon_client::DaemonClient;
 use testcontainers::runners::AsyncRunner;
-use testcontainers::{core::WaitFor, GenericImage, ImageExt};
+use testcontainers::{GenericImage, ImageExt, core::WaitFor};
 
 fn kith_daemon_image() -> GenericImage {
     GenericImage::new("kith-daemon", "latest")
@@ -64,14 +64,12 @@ async fn container_multi_daemon() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     // Shell connects to both
-    let mut client1 =
-        DaemonClient::connect(&addr1, Keypair::from_secret(&kp.secret_bytes()))
-            .await
-            .expect("should connect to daemon-1");
-    let mut client2 =
-        DaemonClient::connect(&addr2, Keypair::from_secret(&kp.secret_bytes()))
-            .await
-            .expect("should connect to daemon-2");
+    let mut client1 = DaemonClient::connect(&addr1, Keypair::from_secret(&kp.secret_bytes()))
+        .await
+        .expect("should connect to daemon-1");
+    let mut client2 = DaemonClient::connect(&addr2, Keypair::from_secret(&kp.secret_bytes()))
+        .await
+        .expect("should connect to daemon-2");
 
     // Exec on each
     let r1 = client1.exec("hostname").await.expect("exec on daemon-1");
@@ -104,10 +102,9 @@ async fn container_apply_commit_rollback() {
     let addr = format!("http://127.0.0.1:{port}");
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let mut client =
-        DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
-            .await
-            .unwrap();
+    let mut client = DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
+        .await
+        .unwrap();
 
     // Apply
     let pending_id = client.apply("docker compose up", 600).await.unwrap();
@@ -202,10 +199,9 @@ async fn container_concurrent_exec() {
         let addr = addr.clone();
         let secret = kp.secret_bytes();
         let handle = tokio::spawn(async move {
-            let mut client =
-                DaemonClient::connect(&addr, Keypair::from_secret(&secret))
-                    .await
-                    .unwrap();
+            let mut client = DaemonClient::connect(&addr, Keypair::from_secret(&secret))
+                .await
+                .unwrap();
             let result = client.exec(&format!("echo concurrent-{i}")).await.unwrap();
             assert_eq!(result.exit_code, 0);
             assert!(result.stdout.contains(&format!("concurrent-{i}")));
@@ -234,10 +230,9 @@ async fn container_multi_command_sequence() {
     let addr = format!("http://127.0.0.1:{port}");
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let mut client =
-        DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
-            .await
-            .unwrap();
+    let mut client = DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
+        .await
+        .unwrap();
 
     // Run a sequence of commands
     let r1 = client.exec("echo step-1").await.unwrap();
@@ -270,10 +265,9 @@ async fn container_daemon_restart_resilience() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     // First connection works
-    let mut client =
-        DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
-            .await
-            .unwrap();
+    let mut client = DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
+        .await
+        .unwrap();
     let r = client.exec("echo before-restart").await.unwrap();
     assert!(r.stdout.contains("before-restart"));
 

@@ -119,7 +119,10 @@ mod tests {
     #[tokio::test]
     async fn bow_embed_produces_vector() {
         let embedder = BagOfWordsEmbedder::new(100);
-        let emb = embedder.embed("docker ps running containers").await.unwrap();
+        let emb = embedder
+            .embed("docker ps running containers")
+            .await
+            .unwrap();
         assert_eq!(emb.values.len(), 100);
         assert_eq!(emb.model_version, "bow-v1");
         // Should have non-zero values for the tokens

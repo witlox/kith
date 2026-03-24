@@ -77,10 +77,7 @@ impl FileObserver {
         match std::fs::metadata(path) {
             Ok(meta) => {
                 if let Ok(mtime) = meta.modified() {
-                    let changed = self
-                        .state
-                        .get(path)
-                        .map_or(true, |prev| *prev != mtime);
+                    let changed = self.state.get(path).map_or(true, |prev| *prev != mtime);
 
                     if changed {
                         let event_detail = if self.state.contains_key(path) {

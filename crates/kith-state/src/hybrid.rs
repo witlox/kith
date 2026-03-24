@@ -56,12 +56,14 @@ impl HybridRetriever {
 
         for kr in &keyword_results {
             let normalized = kr.score / keyword_max;
-            let entry = merged.entry(kr.event.id.clone()).or_insert_with(|| HybridResult {
-                event: kr.event.clone(),
-                keyword_score: 0.0,
-                vector_score: 0.0,
-                combined_score: 0.0,
-            });
+            let entry = merged
+                .entry(kr.event.id.clone())
+                .or_insert_with(|| HybridResult {
+                    event: kr.event.clone(),
+                    keyword_score: 0.0,
+                    vector_score: 0.0,
+                    combined_score: 0.0,
+                });
             entry.keyword_score = normalized as f32;
         }
 
@@ -73,19 +75,21 @@ impl HybridRetriever {
 
         for vr in &vector_results {
             let normalized = vr.score / vector_max;
-            let entry = merged.entry(vr.event.id.clone()).or_insert_with(|| HybridResult {
-                event: vr.event.clone(),
-                keyword_score: 0.0,
-                vector_score: 0.0,
-                combined_score: 0.0,
-            });
+            let entry = merged
+                .entry(vr.event.id.clone())
+                .or_insert_with(|| HybridResult {
+                    event: vr.event.clone(),
+                    keyword_score: 0.0,
+                    vector_score: 0.0,
+                    combined_score: 0.0,
+                });
             entry.vector_score = normalized;
         }
 
         // Compute combined scores
         for result in merged.values_mut() {
-            result.combined_score =
-                result.keyword_score * self.keyword_weight + result.vector_score * self.vector_weight;
+            result.combined_score = result.keyword_score * self.keyword_weight
+                + result.vector_score * self.vector_weight;
         }
 
         let mut results: Vec<HybridResult> = merged.into_values().collect();
@@ -123,8 +127,7 @@ mod tests {
     use kith_common::event::{Event, EventCategory};
 
     fn make_event(machine: &str, detail: &str) -> Event {
-        Event::new(machine, EventCategory::System, "test", detail)
-            .with_scope(EventScope::Ops)
+        Event::new(machine, EventCategory::System, "test", detail).with_scope(EventScope::Ops)
     }
 
     #[tokio::test]
@@ -224,7 +227,13 @@ mod tests {
         let query_emb = embedder.embed("docker container").await.unwrap();
 
         let results = retriever
-            .search(&events, "docker container", &query_emb, &EventScope::Ops, 10)
+            .search(
+                &events,
+                "docker container",
+                &query_emb,
+                &EventScope::Ops,
+                10,
+            )
             .await;
 
         // Same event found by both keyword and vector — should appear once

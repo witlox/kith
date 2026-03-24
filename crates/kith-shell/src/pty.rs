@@ -6,9 +6,9 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::process::CommandExt;
 use std::process::Command;
 
-use nix::pty::{openpty, OpenptyResult};
+use nix::pty::{OpenptyResult, openpty};
 use nix::sys::wait::waitpid;
-use nix::unistd::{close, dup2, fork, setsid, ForkResult, Pid};
+use nix::unistd::{ForkResult, Pid, close, dup2, fork, setsid};
 use tracing::info;
 
 use kith_common::error::KithError;
@@ -23,8 +23,8 @@ pub struct PtyShell {
 impl PtyShell {
     /// Spawn a new bash shell connected via PTY.
     pub fn spawn() -> Result<Self, KithError> {
-        let OpenptyResult { master, slave } = openpty(None, None)
-            .map_err(|e| KithError::Internal(format!("openpty failed: {e}")))?;
+        let OpenptyResult { master, slave } =
+            openpty(None, None).map_err(|e| KithError::Internal(format!("openpty failed: {e}")))?;
 
         // SAFETY: fork is inherently unsafe. We immediately exec in the child
         // and only touch async-signal-safe functions before exec.
@@ -52,7 +52,7 @@ impl PtyShell {
                     .arg("--norc")
                     .arg("--noprofile")
                     .env("TERM", "xterm-256color")
-                    .env("PS1", "")  // suppress bash prompt — kith shows its own
+                    .env("PS1", "") // suppress bash prompt — kith shows its own
                     .exec(); // never returns on success
 
                 // If exec fails
@@ -96,13 +96,13 @@ impl PtyShell {
         buf: &mut [u8],
         timeout: std::time::Duration,
     ) -> Result<usize, KithError> {
-        use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
+        use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 
         use std::os::fd::BorrowedFd;
         let fd = unsafe { BorrowedFd::borrow_raw(self.master.as_raw_fd()) };
         let mut pollfd = [PollFd::new(fd, PollFlags::POLLIN)];
-        let timeout_ms = PollTimeout::try_from(timeout.as_millis() as u32)
-            .unwrap_or(PollTimeout::MAX);
+        let timeout_ms =
+            PollTimeout::try_from(timeout.as_millis() as u32).unwrap_or(PollTimeout::MAX);
 
         match poll(&mut pollfd, timeout_ms) {
             Ok(0) => Ok(0), // timeout
@@ -174,7 +174,10 @@ mod tests {
         assert!(pty.is_alive(), "child should be alive");
 
         let output = pty
-            .exec_and_capture("echo pty-test-output", std::time::Duration::from_millis(500))
+            .exec_and_capture(
+                "echo pty-test-output",
+                std::time::Duration::from_millis(500),
+            )
             .expect("should capture output");
 
         assert!(
@@ -238,6 +241,9 @@ mod tests {
                 std::time::Duration::from_millis(500),
             )
             .unwrap();
-        assert!(output.contains("2"), "word count should be 2, got: {output}");
+        assert!(
+            output.contains("2"),
+            "word count should be 2, got: {output}"
+        );
     }
 }

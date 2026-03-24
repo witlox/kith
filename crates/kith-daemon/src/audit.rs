@@ -135,19 +135,34 @@ mod tests {
         let entry = &log.entries()[0];
         assert_eq!(entry.event_type, "exec.command");
         assert_eq!(entry.category, EventCategory::Exec);
-        assert!(entry.metadata["command"].as_str().unwrap().contains("docker ps"));
+        assert!(
+            entry.metadata["command"]
+                .as_str()
+                .unwrap()
+                .contains("docker ps")
+        );
         assert_eq!(entry.metadata["exit_code"], 0);
     }
 
     #[test]
     fn record_exec_denied() {
         let mut log = AuditLog::new("staging-1");
-        log.record_exec("intern", "rm -rf /", None, Some("viewer scope cannot execute"));
+        log.record_exec(
+            "intern",
+            "rm -rf /",
+            None,
+            Some("viewer scope cannot execute"),
+        );
 
         let entry = &log.entries()[0];
         assert_eq!(entry.event_type, "exec.denied");
         assert_eq!(entry.category, EventCategory::Policy);
-        assert!(entry.metadata["reason"].as_str().unwrap().contains("viewer"));
+        assert!(
+            entry.metadata["reason"]
+                .as_str()
+                .unwrap()
+                .contains("viewer")
+        );
     }
 
     #[test]

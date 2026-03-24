@@ -48,7 +48,11 @@ impl KeywordRetriever {
             })
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(limit);
         results
     }
@@ -92,9 +96,14 @@ mod tests {
     use kith_common::event::{Event, EventCategory};
 
     fn drift_event(machine: &str, path: &str) -> Event {
-        Event::new(machine, EventCategory::Drift, "drift.file_changed", &format!("modified {path}"))
-            .with_path(path)
-            .with_scope(EventScope::Public)
+        Event::new(
+            machine,
+            EventCategory::Drift,
+            "drift.file_changed",
+            &format!("modified {path}"),
+        )
+        .with_path(path)
+        .with_scope(EventScope::Public)
     }
 
     fn exec_event(machine: &str, command: &str) -> Event {
@@ -132,8 +141,13 @@ mod tests {
     fn search_by_event_type() {
         let events = vec![
             drift_event("s1", "/a"),
-            Event::new("s1", EventCategory::Drift, "drift.service_stopped", "nginx stopped")
-                .with_scope(EventScope::Public),
+            Event::new(
+                "s1",
+                EventCategory::Drift,
+                "drift.service_stopped",
+                "nginx stopped",
+            )
+            .with_scope(EventScope::Public),
         ];
 
         let results = KeywordRetriever::search(&events, "service_stopped", &EventScope::Ops, 10);
@@ -144,8 +158,8 @@ mod tests {
     #[test]
     fn search_respects_scope() {
         let events = vec![
-            drift_event("s1", "/etc/config"),  // Public
-            exec_event("s1", "docker ps"),      // Ops
+            drift_event("s1", "/etc/config"), // Public
+            exec_event("s1", "docker ps"),    // Ops
         ];
 
         // Public scope should only see the drift event
@@ -171,8 +185,13 @@ mod tests {
     fn search_ranks_by_score() {
         let events = vec![
             // Matches in event_type (3 pts) + detail (1 pt) = 4
-            Event::new("s1", EventCategory::Drift, "drift.nginx_changed", "nginx config changed")
-                .with_scope(EventScope::Public),
+            Event::new(
+                "s1",
+                EventCategory::Drift,
+                "drift.nginx_changed",
+                "nginx config changed",
+            )
+            .with_scope(EventScope::Public),
             // Matches only in detail (1 pt)
             Event::new("s1", EventCategory::Exec, "exec.command", "restarted nginx")
                 .with_scope(EventScope::Ops),
@@ -180,7 +199,10 @@ mod tests {
 
         let results = KeywordRetriever::search(&events, "nginx", &EventScope::Ops, 10);
         assert_eq!(results.len(), 2);
-        assert!(results[0].score >= results[1].score, "higher score should be first");
+        assert!(
+            results[0].score >= results[1].score,
+            "higher score should be first"
+        );
     }
 
     #[test]

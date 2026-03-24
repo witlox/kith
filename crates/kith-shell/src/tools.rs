@@ -119,7 +119,11 @@ mod tests {
     #[test]
     fn all_tools_have_valid_json_schema_params() {
         for tool in native_tools() {
-            assert!(tool.parameters.is_object(), "{} params should be object", tool.name);
+            assert!(
+                tool.parameters.is_object(),
+                "{} params should be object",
+                tool.name
+            );
             assert_eq!(
                 tool.parameters["type"], "object",
                 "{} params should have type=object",

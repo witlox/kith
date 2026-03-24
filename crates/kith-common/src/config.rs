@@ -67,9 +67,7 @@ impl KithConfig {
     pub fn load(path: Option<&std::path::Path>) -> Result<Option<Self>, String> {
         let config_path = path
             .map(std::path::PathBuf::from)
-            .or_else(|| {
-                dirs_next::config_dir().map(|d| d.join("kith").join("config.toml"))
-            })
+            .or_else(|| dirs_next::config_dir().map(|d| d.join("kith").join("config.toml")))
             .unwrap_or_else(|| std::path::PathBuf::from(".config/kith/config.toml"));
 
         if !config_path.exists() {

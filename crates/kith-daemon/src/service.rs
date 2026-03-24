@@ -65,13 +65,16 @@ impl KithDaemonService {
 
         match self.policy.evaluate(&credential, &hash, action) {
             Ok(PolicyDecision::Allow) => {
-                let pubkey_hex =
-                    kith_common::credential::pubkey_to_hex(&credential.public_key.as_slice().try_into().unwrap_or([0u8; 32]));
+                let pubkey_hex = kith_common::credential::pubkey_to_hex(
+                    &credential
+                        .public_key
+                        .as_slice()
+                        .try_into()
+                        .unwrap_or([0u8; 32]),
+                );
                 Ok(pubkey_hex)
             }
-            Ok(PolicyDecision::Deny { reason }) => {
-                Err(Status::permission_denied(reason))
-            }
+            Ok(PolicyDecision::Deny { reason }) => Err(Status::permission_denied(reason)),
             Err(kith_common::error::KithError::CredentialsExpired) => {
                 Err(Status::unauthenticated("credentials expired"))
             }
@@ -157,7 +160,9 @@ impl KithDaemon for KithDaemonService {
             }
         });
 
-        Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(rx)))
+        Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
+            rx,
+        )))
     }
 
     async fn query(
@@ -165,11 +170,7 @@ impl KithDaemon for KithDaemonService {
         request: Request<proto::QueryRequest>,
     ) -> Result<Response<proto::StateResponse>, Status> {
         let req = request.into_inner();
-        let _user = self.auth(
-            req.credential.as_ref(),
-            b"query",
-            &ActionCategory::Query,
-        )?;
+        let _user = self.auth(req.credential.as_ref(), b"query", &ActionCategory::Query)?;
 
         // Return basic state info
         let payload = serde_json::json!({
@@ -282,11 +283,7 @@ impl KithDaemon for KithDaemonService {
         request: Request<proto::EventsRequest>,
     ) -> Result<Response<Self::EventsStream>, Status> {
         let req = request.into_inner();
-        let _user = self.auth(
-            req.credential.as_ref(),
-            b"events",
-            &ActionCategory::Events,
-        )?;
+        let _user = self.auth(req.credential.as_ref(), b"events", &ActionCategory::Events)?;
 
         // Return audit log entries as events
         let audit = self.audit.lock().await;
@@ -309,7 +306,9 @@ impl KithDaemon for KithDaemonService {
             }
         });
 
-        Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(rx)))
+        Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
+            rx,
+        )))
     }
 
     async fn capabilities(

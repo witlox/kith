@@ -21,7 +21,9 @@ pub struct PeerInfo {
 #[derive(Debug, Clone)]
 pub enum MeshEvent {
     PeerJoined(PeerInfo),
-    PeerLeft { id: String },
+    PeerLeft {
+        id: String,
+    },
     PeerEndpointChanged {
         id: String,
         new_endpoint: SocketAddr,
@@ -67,7 +69,9 @@ impl PeerRegistry {
                 let event = MeshEvent::PeerEndpointChanged {
                     id: info.id.clone(),
                     new_endpoint: info.endpoint.unwrap_or_else(|| {
-                        existing.endpoint.unwrap_or(SocketAddr::from(([0, 0, 0, 0], 0)))
+                        existing
+                            .endpoint
+                            .unwrap_or(SocketAddr::from(([0, 0, 0, 0], 0)))
                     }),
                 };
                 self.peers.insert(info.id.clone(), info);
@@ -133,9 +137,7 @@ impl PeerRegistry {
         let stale_ids: Vec<String> = self
             .peers
             .iter()
-            .filter(|(_, p)| {
-                now.signed_duration_since(p.last_seen).num_seconds() > timeout_secs
-            })
+            .filter(|(_, p)| now.signed_duration_since(p.last_seen).num_seconds() > timeout_secs)
             .map(|(id, _)| id.clone())
             .collect();
 

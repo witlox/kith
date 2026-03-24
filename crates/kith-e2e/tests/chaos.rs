@@ -19,10 +19,9 @@ use kith_sync::store::EventStore;
 #[tokio::test]
 async fn chaos_daemon_unreachable_mid_session() {
     let (addr, kp) = helpers::start_daemon("ephemeral-1").await;
-    let mut client =
-        DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
-            .await
-            .unwrap();
+    let mut client = DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
+        .await
+        .unwrap();
 
     // First call succeeds
     let result = client.exec("echo alive").await.unwrap();
@@ -31,7 +30,10 @@ async fn chaos_daemon_unreachable_mid_session() {
     // We can't actually kill the spawned server in this test,
     // but we can test connecting to a dead address
     let dead_client = DaemonClient::connect("127.0.0.1:1", Keypair::generate()).await;
-    assert!(dead_client.is_err(), "connecting to dead address should fail");
+    assert!(
+        dead_client.is_err(),
+        "connecting to dead address should fail"
+    );
 }
 
 /// Chaos: concurrent exec requests to same daemon.
@@ -44,10 +46,9 @@ async fn chaos_concurrent_exec() {
         let addr = addr.clone();
         let secret = kp.secret_bytes();
         let handle = tokio::spawn(async move {
-            let mut client =
-                DaemonClient::connect(&addr, Keypair::from_secret(&secret))
-                    .await
-                    .unwrap();
+            let mut client = DaemonClient::connect(&addr, Keypair::from_secret(&secret))
+                .await
+                .unwrap();
             let result = client.exec(&format!("echo concurrent-{i}")).await.unwrap();
             assert_eq!(result.exit_code, 0);
             assert!(result.stdout.contains(&format!("concurrent-{i}")));
@@ -76,15 +77,11 @@ async fn chaos_concurrent_apply_commit() {
         let addr = addr.clone();
         let secret = kp.secret_bytes();
         let handle = tokio::spawn(async move {
-            let mut client =
-                DaemonClient::connect(&addr, Keypair::from_secret(&secret))
-                    .await
-                    .unwrap();
-
-            let pending_id = client
-                .apply(&format!("change-{i}"), 600)
+            let mut client = DaemonClient::connect(&addr, Keypair::from_secret(&secret))
                 .await
                 .unwrap();
+
+            let pending_id = client.apply(&format!("change-{i}"), 600).await.unwrap();
             assert!(!pending_id.is_empty());
 
             let committed = client.commit(&pending_id).await.unwrap();
@@ -128,14 +125,24 @@ async fn chaos_high_volume_merge() {
     for i in 0..1000 {
         store_a
             .write(
-                Event::new("node-a", EventCategory::System, "system.tick", &format!("tick-a-{i}"))
-                    .with_scope(EventScope::Ops),
+                Event::new(
+                    "node-a",
+                    EventCategory::System,
+                    "system.tick",
+                    &format!("tick-a-{i}"),
+                )
+                .with_scope(EventScope::Ops),
             )
             .await;
         store_b
             .write(
-                Event::new("node-b", EventCategory::System, "system.tick", &format!("tick-b-{i}"))
-                    .with_scope(EventScope::Ops),
+                Event::new(
+                    "node-b",
+                    EventCategory::System,
+                    "system.tick",
+                    &format!("tick-b-{i}"),
+                )
+                .with_scope(EventScope::Ops),
             )
             .await;
     }
@@ -175,8 +182,13 @@ async fn chaos_subscription_under_load() {
         for i in 0..count {
             store
                 .write(
-                    Event::new("node", EventCategory::System, "system.tick", &format!("tick-{i}"))
-                        .with_scope(EventScope::Ops),
+                    Event::new(
+                        "node",
+                        EventCategory::System,
+                        "system.tick",
+                        &format!("tick-{i}"),
+                    )
+                    .with_scope(EventScope::Ops),
                 )
                 .await;
         }
@@ -214,10 +226,9 @@ async fn chaos_auth_abuse_doesnt_affect_legit() {
     }
 
     // Legitimate client should still work
-    let mut legit_client =
-        DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
-            .await
-            .unwrap();
+    let mut legit_client = DaemonClient::connect(&addr, Keypair::from_secret(&kp.secret_bytes()))
+        .await
+        .unwrap();
 
     let result = legit_client.exec("echo legit").await.unwrap();
     assert_eq!(result.stdout.trim(), "legit");

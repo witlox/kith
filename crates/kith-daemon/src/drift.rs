@@ -1,7 +1,7 @@
 //! Drift evaluator — processes observer events, maintains drift vector.
 //! Borrows pact's pattern: blacklist filtering, weighted magnitude, reset on commit.
 
-use kith_common::drift::{matches_blacklist, DriftCategory, DriftVector, DriftWeights};
+use kith_common::drift::{DriftCategory, DriftVector, DriftWeights, matches_blacklist};
 
 /// An event from the state observer (inotify, process poll, etc.)
 #[derive(Debug, Clone)]

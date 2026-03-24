@@ -18,17 +18,19 @@ use tracing::info;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-        )
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     // Load config file (if exists): ~/.config/kith/config.toml
     let config_path = find_flag(&args, "--config");
-    let config = kith_common::config::KithConfig::load(config_path.as_deref().map(std::path::Path::new))
-        .unwrap_or_else(|e| { eprintln!("warning: config load failed: {e}"); None });
+    let config =
+        kith_common::config::KithConfig::load(config_path.as_deref().map(std::path::Path::new))
+            .unwrap_or_else(|e| {
+                eprintln!("warning: config load failed: {e}");
+                None
+            });
 
     // Resolve settings: CLI flags > env vars > config file > defaults
     let cfg_inference = config.as_ref().and_then(|c| c.inference.as_ref());
@@ -48,8 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .or_else(|| cfg_inference.map(|i| i.model.clone()))
         .unwrap_or_else(|| "default".into());
 
-    let daemon_addr = find_flag(&args, "--daemon")
-        .or_else(|| std::env::var("KITH_DAEMON").ok());
+    let daemon_addr = find_flag(&args, "--daemon").or_else(|| std::env::var("KITH_DAEMON").ok());
 
     // Resolve API key: env var name from config, then try common env vars
     let api_key_env = cfg_inference.and_then(|i| i.api_key_env.clone());
@@ -58,9 +59,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend: Box<dyn InferenceBackend> = match backend_type.as_str() {
         "anthropic" => {
             let key_var = api_key_env.as_deref().unwrap_or("ANTHROPIC_API_KEY");
-            let api_key = std::env::var(key_var)
-                .map_err(|_| format!("{key_var} env var not set"))?;
-            let model = if model == "default" { "claude-sonnet-4-20250514".into() } else { model };
+            let api_key =
+                std::env::var(key_var).map_err(|_| format!("{key_var} env var not set"))?;
+            let model = if model == "default" {
+                "claude-sonnet-4-20250514".into()
+            } else {
+                model
+            };
             Box::new(AnthropicBackend::new(api_key, model))
         }
         _ => {
@@ -94,7 +99,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Single command mode
-    let non_flag_args: Vec<&str> = args.iter()
+    let non_flag_args: Vec<&str> = args
+        .iter()
         .filter(|a| !a.starts_with("--"))
         .map(|a| a.as_str())
         .collect();
@@ -128,9 +134,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("kith")
         .join("history.txt");
-    let mut rl = rustyline::DefaultEditor::new().unwrap_or_else(|_| {
-        rustyline::DefaultEditor::new().expect("rustyline init")
-    });
+    let mut rl = rustyline::DefaultEditor::new()
+        .unwrap_or_else(|_| rustyline::DefaultEditor::new().expect("rustyline init"));
     let _ = rl.load_history(&history_path);
 
     loop {
@@ -155,7 +160,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         if let Some(ref pty_shell) = pty {
                             // Execute via PTY bash
-                            match pty_shell.exec_and_capture(&cmd, std::time::Duration::from_secs(30)) {
+                            match pty_shell
+                                .exec_and_capture(&cmd, std::time::Duration::from_secs(30))
+                            {
                                 Ok(output) => print!("{output}"),
                                 Err(e) => eprintln!("error: {e}"),
                             }
@@ -194,7 +201,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn print_output(output: &AgentOutput) {
     match output {
-        AgentOutput::PassThrough { stdout, stderr, exit_code: _, .. } => {
+        AgentOutput::PassThrough {
+            stdout,
+            stderr,
+            exit_code: _,
+            ..
+        } => {
             if !stdout.is_empty() {
                 print!("{stdout}");
             }
@@ -249,7 +261,9 @@ fn load_or_create_keypair() -> Result<Keypair, Box<dyn std::error::Error>> {
             }
         }
         let bytes = std::fs::read(&key_path)?;
-        let secret: [u8; 32] = bytes.as_slice().try_into()
+        let secret: [u8; 32] = bytes
+            .as_slice()
+            .try_into()
             .map_err(|_| "invalid key file: expected 32 bytes")?;
         Ok(Keypair::from_secret(&secret))
     } else {

@@ -87,7 +87,9 @@ mod tests {
 
     #[test]
     fn inference_error_display_messages() {
-        let e = InferenceError::RateLimited { retry_after_ms: 5000 };
+        let e = InferenceError::RateLimited {
+            retry_after_ms: 5000,
+        };
         assert!(e.to_string().contains("5000"));
 
         let e = InferenceError::ContextOverflow {

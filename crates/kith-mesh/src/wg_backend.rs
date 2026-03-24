@@ -6,8 +6,8 @@ use std::net::SocketAddr;
 
 use async_trait::async_trait;
 use defguard_wireguard_rs::{
-    peer::Peer, key::Key, net::IpAddrMask,
-    InterfaceConfiguration, WGApi, WireguardInterfaceApi, Userspace,
+    InterfaceConfiguration, Userspace, WGApi, WireguardInterfaceApi, key::Key, net::IpAddrMask,
+    peer::Peer,
 };
 use tracing::info;
 
@@ -23,11 +23,7 @@ pub struct NativeWireguard {
 
 impl NativeWireguard {
     /// Create and configure a WireGuard interface.
-    pub fn new(
-        interface: &str,
-        private_key: &str,
-        listen_port: u16,
-    ) -> Result<Self, KithError> {
+    pub fn new(interface: &str, private_key: &str, listen_port: u16) -> Result<Self, KithError> {
         let ifname = if cfg!(target_os = "macos") && !interface.starts_with("utun") {
             format!("utun{}", interface.len() % 10 + 3) // macOS needs utunN
         } else {
@@ -92,10 +88,12 @@ impl WireguardBackend for NativeWireguard {
         endpoint: Option<SocketAddr>,
         allowed_ip: &str,
     ) -> Result<(), KithError> {
-        let key: Key = pubkey.parse()
+        let key: Key = pubkey
+            .parse()
             .map_err(|e| KithError::MeshError(format!("invalid peer pubkey: {e}")))?;
 
-        let allowed = allowed_ip.parse::<IpAddrMask>()
+        let allowed = allowed_ip
+            .parse::<IpAddrMask>()
             .map_err(|e| KithError::MeshError(format!("invalid allowed IP {allowed_ip}: {e}")))?;
 
         let mut peer = Peer::new(key);
@@ -112,7 +110,8 @@ impl WireguardBackend for NativeWireguard {
     }
 
     async fn remove_peer(&self, pubkey: &str) -> Result<(), KithError> {
-        let key: Key = pubkey.parse()
+        let key: Key = pubkey
+            .parse()
             .map_err(|e| KithError::MeshError(format!("invalid peer pubkey: {e}")))?;
 
         self.api
@@ -129,7 +128,8 @@ impl WireguardBackend for NativeWireguard {
             .read_interface_data()
             .map_err(|e| KithError::MeshError(format!("failed to read interface: {e}")))?;
 
-        let key: Key = pubkey.parse()
+        let key: Key = pubkey
+            .parse()
             .map_err(|e| KithError::MeshError(format!("invalid pubkey: {e}")))?;
 
         // host.peers is a HashMap<Key, Peer>

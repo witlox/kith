@@ -35,7 +35,13 @@ fn discovers_each_other(world: &mut KithWorld) {
 #[then("a WireGuard tunnel is established")]
 fn tunnel_established(world: &mut KithWorld) {
     // Simulate handshake
-    for peer in world.peer_registry.peers().iter().map(|p| p.id.clone()).collect::<Vec<_>>() {
+    for peer in world
+        .peer_registry
+        .peers()
+        .iter()
+        .map(|p| p.id.clone())
+        .collect::<Vec<_>>()
+    {
         world.peer_registry.set_connected(&peer, true);
     }
     assert!(world.peer_registry.peers().iter().all(|p| p.connected));
@@ -64,7 +70,12 @@ fn moves_to_new_network(world: &mut KithWorld, machine: String) {
 
 #[then(expr = "{string} publishes an updated endpoint to Nostr")]
 fn publishes_updated(world: &mut KithWorld, _machine: String) {
-    assert!(world.mesh_events.iter().any(|e| matches!(e, MeshEvent::PeerEndpointChanged { .. })));
+    assert!(
+        world
+            .mesh_events
+            .iter()
+            .any(|e| matches!(e, MeshEvent::PeerEndpointChanged { .. }))
+    );
 }
 
 #[then("the tunnel re-establishes to the new endpoint")]

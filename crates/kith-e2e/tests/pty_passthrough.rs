@@ -17,7 +17,9 @@ async fn e2e_passthrough_executes_directly() {
     assert_eq!(result, InputClass::PassThrough("ls -la /tmp".into()));
 
     // Actually execute it
-    let exec_result = kith_daemon::exec::exec_command("ls -la /tmp").await.unwrap();
+    let exec_result = kith_daemon::exec::exec_command("ls -la /tmp")
+        .await
+        .unwrap();
     assert_eq!(exec_result.exit_code, 0);
     assert!(!exec_result.stdout.is_empty());
 }
@@ -31,7 +33,9 @@ async fn e2e_escape_hatch() {
     assert_eq!(result, InputClass::PassThrough("echo escape-test".into()));
 
     // Execute the escaped command
-    let exec_result = kith_daemon::exec::exec_command("echo escape-test").await.unwrap();
+    let exec_result = kith_daemon::exec::exec_command("echo escape-test")
+        .await
+        .unwrap();
     assert_eq!(exec_result.stdout.trim(), "escape-test");
 }
 

@@ -68,13 +68,14 @@ impl AnthropicBackend {
                         });
                     }
                     MessageContent::ToolCalls(tcs) => {
-                        let blocks: Vec<AnthropicContentBlock> = tcs.iter().map(|tc| {
-                            AnthropicContentBlock::ToolUse {
+                        let blocks: Vec<AnthropicContentBlock> = tcs
+                            .iter()
+                            .map(|tc| AnthropicContentBlock::ToolUse {
                                 id: tc.id.clone(),
                                 name: tc.name.clone(),
                                 input: tc.arguments.clone(),
-                            }
-                        }).collect();
+                            })
+                            .collect();
                         api_messages.push(AnthropicMessage {
                             role: "assistant".into(),
                             content: AnthropicContent::Blocks(blocks),
@@ -94,7 +95,7 @@ impl AnthropicBackend {
                             AnthropicContentBlock::ToolResult {
                                 tool_use_id: tool_call_id.clone(),
                                 content: output,
-                            }
+                            },
                         ]),
                     });
                 }
@@ -104,11 +105,16 @@ impl AnthropicBackend {
         let api_tools: Option<Vec<AnthropicTool>> = if tools.is_empty() {
             None
         } else {
-            Some(tools.iter().map(|t| AnthropicTool {
-                name: t.name.clone(),
-                description: t.description.clone(),
-                input_schema: t.parameters.clone(),
-            }).collect())
+            Some(
+                tools
+                    .iter()
+                    .map(|t| AnthropicTool {
+                        name: t.name.clone(),
+                        description: t.description.clone(),
+                        input_schema: t.parameters.clone(),
+                    })
+                    .collect(),
+            )
         };
 
         AnthropicRequest {
@@ -130,10 +136,15 @@ impl InferenceBackend for AnthropicBackend {
         messages: &[Message],
         tools: &[ToolDefinition],
         config: &InferenceConfig,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamChunk, InferenceError>> + Send>>, InferenceError> {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<StreamChunk, InferenceError>> + Send>>,
+        InferenceError,
+    > {
         let body = self.build_request(messages, tools, config);
 
-        let response = self.client.post(ANTHROPIC_API_URL)
+        let response = self
+            .client
+            .post(ANTHROPIC_API_URL)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
@@ -153,12 +164,15 @@ impl InferenceBackend for AnthropicBackend {
 
         let status = response.status();
         if status.as_u16() == 429 {
-            let retry_after = response.headers()
+            let retry_after = response
+                .headers()
                 .get("retry-after")
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| s.parse::<u64>().ok())
                 .unwrap_or(1000);
-            return Err(InferenceError::RateLimited { retry_after_ms: retry_after });
+            return Err(InferenceError::RateLimited {
+                retry_after_ms: retry_after,
+            });
         }
         if status.as_u16() == 401 {
             return Err(InferenceError::AuthFailed("invalid API key".into()));
@@ -168,7 +182,9 @@ impl InferenceBackend for AnthropicBackend {
             if body.contains("context_length_exceeded") || body.contains("max_tokens") {
                 return Err(InferenceError::ContextOverflow { used: 0, limit: 0 });
             }
-            return Err(InferenceError::BackendError(format!("HTTP {status}: {body}")));
+            return Err(InferenceError::BackendError(format!(
+                "HTTP {status}: {body}"
+            )));
         }
 
         let byte_stream = response.bytes_stream();
@@ -178,7 +194,9 @@ impl InferenceBackend for AnthropicBackend {
 
     async fn health_check(&self) -> Result<(), InferenceError> {
         // Anthropic doesn't have a /health endpoint. Send a minimal request.
-        let response = self.client.post(ANTHROPIC_API_URL)
+        let response = self
+            .client
+            .post(ANTHROPIC_API_URL)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
@@ -195,7 +213,10 @@ impl InferenceBackend for AnthropicBackend {
         if response.status().is_success() || response.status().as_u16() == 200 {
             Ok(())
         } else {
-            Err(InferenceError::Unreachable(format!("HTTP {}", response.status())))
+            Err(InferenceError::Unreachable(format!(
+                "HTTP {}",
+                response.status()
+            )))
         }
     }
 
@@ -215,7 +236,13 @@ fn parse_anthropic_sse_stream(
     let current_tool_input = String::new();
 
     futures::stream::unfold(
-        (Box::pin(byte_stream), String::new(), current_tool_id, current_tool_name, current_tool_input),
+        (
+            Box::pin(byte_stream),
+            String::new(),
+            current_tool_id,
+            current_tool_name,
+            current_tool_input,
+        ),
         |(mut stream, mut buf, mut tool_id, mut tool_name, mut tool_input)| async move {
             loop {
                 if let Some(pos) = buf.find("\n\n") {
@@ -238,8 +265,16 @@ fn parse_anthropic_sse_stream(
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
                                 if let Some(cb) = v.get("content_block") {
                                     if cb.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
-                                        tool_id = cb.get("id").and_then(|i| i.as_str()).unwrap_or("").into();
-                                        tool_name = cb.get("name").and_then(|n| n.as_str()).unwrap_or("").into();
+                                        tool_id = cb
+                                            .get("id")
+                                            .and_then(|i| i.as_str())
+                                            .unwrap_or("")
+                                            .into();
+                                        tool_name = cb
+                                            .get("name")
+                                            .and_then(|n| n.as_str())
+                                            .unwrap_or("")
+                                            .into();
                                         tool_input.clear();
                                     }
                                 }
@@ -248,30 +283,45 @@ fn parse_anthropic_sse_stream(
                         "content_block_delta" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
                                 if let Some(delta) = v.get("delta") {
-                                    let delta_type = delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                                    let delta_type =
+                                        delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
                                     match delta_type {
                                         "text_delta" => {
-                                            if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
+                                            if let Some(text) =
+                                                delta.get("text").and_then(|t| t.as_str())
+                                            {
                                                 if !text.is_empty() {
                                                     return Some((
                                                         Ok(StreamChunk::TextDelta(text.into())),
-                                                        (stream, buf, tool_id, tool_name, tool_input),
+                                                        (
+                                                            stream, buf, tool_id, tool_name,
+                                                            tool_input,
+                                                        ),
                                                     ));
                                                 }
                                             }
                                         }
                                         "thinking_delta" => {
-                                            if let Some(thinking) = delta.get("thinking").and_then(|t| t.as_str()) {
+                                            if let Some(thinking) =
+                                                delta.get("thinking").and_then(|t| t.as_str())
+                                            {
                                                 if !thinking.is_empty() {
                                                     return Some((
-                                                        Ok(StreamChunk::ThinkingDelta(thinking.into())),
-                                                        (stream, buf, tool_id, tool_name, tool_input),
+                                                        Ok(StreamChunk::ThinkingDelta(
+                                                            thinking.into(),
+                                                        )),
+                                                        (
+                                                            stream, buf, tool_id, tool_name,
+                                                            tool_input,
+                                                        ),
                                                     ));
                                                 }
                                             }
                                         }
                                         "input_json_delta" => {
-                                            if let Some(partial) = delta.get("partial_json").and_then(|p| p.as_str()) {
+                                            if let Some(partial) =
+                                                delta.get("partial_json").and_then(|p| p.as_str())
+                                            {
                                                 tool_input.push_str(partial);
                                             }
                                         }
@@ -391,8 +441,14 @@ mod tests {
     fn message_conversion_system_extracted() {
         let backend = AnthropicBackend::new("test-key".into(), "claude-sonnet".into());
         let messages = vec![
-            Message { role: Role::System, content: MessageContent::Text("sys prompt".into()) },
-            Message { role: Role::User, content: MessageContent::Text("hello".into()) },
+            Message {
+                role: Role::System,
+                content: MessageContent::Text("sys prompt".into()),
+            },
+            Message {
+                role: Role::User,
+                content: MessageContent::Text("hello".into()),
+            },
         ];
         let req = backend.build_request(&messages, &[], &InferenceConfig::default());
         assert_eq!(req.system.unwrap(), "sys prompt");
@@ -403,16 +459,14 @@ mod tests {
     #[test]
     fn tool_calls_converted() {
         let backend = AnthropicBackend::new("test-key".into(), "claude-sonnet".into());
-        let messages = vec![
-            Message {
-                role: Role::Assistant,
-                content: MessageContent::ToolCalls(vec![ToolCall {
-                    id: "tc_1".into(),
-                    name: "remote".into(),
-                    arguments: serde_json::json!({"host": "staging"}),
-                }]),
-            },
-        ];
+        let messages = vec![Message {
+            role: Role::Assistant,
+            content: MessageContent::ToolCalls(vec![ToolCall {
+                id: "tc_1".into(),
+                name: "remote".into(),
+                arguments: serde_json::json!({"host": "staging"}),
+            }]),
+        }];
         let req = backend.build_request(&messages, &[], &InferenceConfig::default());
         let serialized = serde_json::to_string(&req).unwrap();
         assert!(serialized.contains("tool_use"));
@@ -422,15 +476,15 @@ mod tests {
     #[test]
     fn tool_result_converted() {
         let backend = AnthropicBackend::new("test-key".into(), "claude-sonnet".into());
-        let messages = vec![
-            Message {
-                role: Role::Tool { tool_call_id: "tc_1".into() },
-                content: MessageContent::ToolResult {
-                    tool_call_id: "tc_1".into(),
-                    output: "done".into(),
-                },
+        let messages = vec![Message {
+            role: Role::Tool {
+                tool_call_id: "tc_1".into(),
             },
-        ];
+            content: MessageContent::ToolResult {
+                tool_call_id: "tc_1".into(),
+                output: "done".into(),
+            },
+        }];
         let req = backend.build_request(&messages, &[], &InferenceConfig::default());
         // Tool results are sent as user messages with tool_result blocks
         assert_eq!(req.messages[0].role, "user");
@@ -465,7 +519,10 @@ mod tests {
     fn request_has_correct_defaults() {
         let backend = AnthropicBackend::new("key".into(), "claude-sonnet".into());
         let req = backend.build_request(
-            &[Message { role: Role::User, content: MessageContent::Text("hi".into()) }],
+            &[Message {
+                role: Role::User,
+                content: MessageContent::Text("hi".into()),
+            }],
             &[],
             &InferenceConfig::default(),
         );

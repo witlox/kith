@@ -64,18 +64,18 @@ mod tests {
 
     #[test]
     fn prompt_includes_fleet_summary() {
-        let p = build_system_prompt(
-            "dev-mac",
-            "Darwin",
-            "staging-1: healthy, 12GB free",
-            None,
-        );
+        let p = build_system_prompt("dev-mac", "Darwin", "staging-1: healthy, 12GB free", None);
         assert!(p.contains("staging-1: healthy"));
     }
 
     #[test]
     fn prompt_includes_project_context() {
-        let p = build_system_prompt("dev-mac", "Darwin", "", Some("FastAPI service, Docker deploy"));
+        let p = build_system_prompt(
+            "dev-mac",
+            "Darwin",
+            "",
+            Some("FastAPI service, Docker deploy"),
+        );
         assert!(p.contains("FastAPI service"));
     }
 
@@ -87,9 +87,18 @@ mod tests {
 
     #[test]
     fn prompt_is_reasonably_short() {
-        let p = build_system_prompt("dev-mac", "Darwin 25.3.0", "staging-1: ok", Some("project ctx"));
+        let p = build_system_prompt(
+            "dev-mac",
+            "Darwin 25.3.0",
+            "staging-1: ok",
+            Some("project ctx"),
+        );
         // Should be well under 2K tokens (~500 words max)
-        assert!(p.len() < 3000, "prompt should be <3000 chars, got {}", p.len());
+        assert!(
+            p.len() < 3000,
+            "prompt should be <3000 chars, got {}",
+            p.len()
+        );
     }
 
     #[test]

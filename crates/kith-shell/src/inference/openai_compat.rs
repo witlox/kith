@@ -30,11 +30,7 @@ impl OpenAiCompatBackend {
     }
 
     /// Build from config, reading API key from env var if specified.
-    pub fn from_config(
-        endpoint: &str,
-        model: &str,
-        api_key_env: Option<&str>,
-    ) -> Self {
+    pub fn from_config(endpoint: &str, model: &str, api_key_env: Option<&str>) -> Self {
         let api_key = api_key_env.and_then(|var| std::env::var(var).ok());
         Self::new(endpoint.into(), model.into(), api_key)
     }
@@ -50,14 +46,19 @@ impl OpenAiCompatBackend {
         let oai_tools: Option<Vec<OaiTool>> = if tools.is_empty() {
             None
         } else {
-            Some(tools.iter().map(|t| OaiTool {
-                r#type: "function".into(),
-                function: OaiFunction {
-                    name: t.name.clone(),
-                    description: t.description.clone(),
-                    parameters: t.parameters.clone(),
-                },
-            }).collect())
+            Some(
+                tools
+                    .iter()
+                    .map(|t| OaiTool {
+                        r#type: "function".into(),
+                        function: OaiFunction {
+                            name: t.name.clone(),
+                            description: t.description.clone(),
+                            parameters: t.parameters.clone(),
+                        },
+                    })
+                    .collect(),
+            )
         };
 
         OaiRequest {
@@ -78,13 +79,14 @@ impl InferenceBackend for OpenAiCompatBackend {
         messages: &[Message],
         tools: &[ToolDefinition],
         config: &InferenceConfig,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamChunk, InferenceError>> + Send>>, InferenceError> {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<StreamChunk, InferenceError>> + Send>>,
+        InferenceError,
+    > {
         let url = format!("{}/chat/completions", self.endpoint);
         let body = self.build_request(messages, tools, config);
 
-        let mut req = self.client.post(&url)
-            .json(&body)
-            .timeout(config.timeout);
+        let mut req = self.client.post(&url).json(&body).timeout(config.timeout);
 
         if let Some(ref key) = self.api_key {
             req = req.bearer_auth(key);
@@ -102,19 +104,24 @@ impl InferenceBackend for OpenAiCompatBackend {
 
         let status = response.status();
         if status == 429 {
-            let retry_after = response.headers()
+            let retry_after = response
+                .headers()
                 .get("retry-after")
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| s.parse::<u64>().ok())
                 .unwrap_or(1000);
-            return Err(InferenceError::RateLimited { retry_after_ms: retry_after });
+            return Err(InferenceError::RateLimited {
+                retry_after_ms: retry_after,
+            });
         }
         if status == 401 || status == 403 {
             return Err(InferenceError::AuthFailed(format!("HTTP {status}")));
         }
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            return Err(InferenceError::BackendError(format!("HTTP {status}: {body}")));
+            return Err(InferenceError::BackendError(format!(
+                "HTTP {status}: {body}"
+            )));
         }
 
         let byte_stream = response.bytes_stream();
@@ -124,11 +131,16 @@ impl InferenceBackend for OpenAiCompatBackend {
 
     async fn health_check(&self) -> Result<(), InferenceError> {
         let url = format!("{}/models", self.endpoint);
-        let mut req = self.client.get(&url).timeout(std::time::Duration::from_secs(5));
+        let mut req = self
+            .client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(5));
         if let Some(ref key) = self.api_key {
             req = req.bearer_auth(key);
         }
-        req.send().await.map_err(|e| InferenceError::Unreachable(e.to_string()))?;
+        req.send()
+            .await
+            .map_err(|e| InferenceError::Unreachable(e.to_string()))?;
         Ok(())
     }
 
@@ -144,7 +156,8 @@ fn parse_openai_sse_stream(
     use futures::StreamExt;
 
     let buffer = String::new();
-    let pending_tool_calls: std::collections::HashMap<usize, PartialToolCall> = std::collections::HashMap::new();
+    let pending_tool_calls: std::collections::HashMap<usize, PartialToolCall> =
+        std::collections::HashMap::new();
 
     futures::stream::unfold(
         (Box::pin(byte_stream), buffer, pending_tool_calls),
@@ -206,13 +219,14 @@ fn parse_openai_sse_stream(
                                 // Tool calls (accumulated across chunks)
                                 if let Some(ref tcs) = delta.tool_calls {
                                     for tc in tcs {
-                                        let entry = tool_calls.entry(tc.index).or_insert_with(|| {
-                                            PartialToolCall {
-                                                id: tc.id.clone().unwrap_or_default(),
-                                                name: String::new(),
-                                                arguments: String::new(),
-                                            }
-                                        });
+                                        let entry =
+                                            tool_calls.entry(tc.index).or_insert_with(|| {
+                                                PartialToolCall {
+                                                    id: tc.id.clone().unwrap_or_default(),
+                                                    name: String::new(),
+                                                    arguments: String::new(),
+                                                }
+                                            });
                                         if let Some(ref f) = tc.function {
                                             if let Some(ref name) = f.name {
                                                 entry.name.clone_from(name);
@@ -336,14 +350,18 @@ impl From<&Message> for OaiMessage {
                 MessageContent::ToolCalls(tcs) => OaiMessage {
                     role: "assistant".into(),
                     content: None,
-                    tool_calls: Some(tcs.iter().map(|tc| OaiToolCallRef {
-                        id: tc.id.clone(),
-                        r#type: "function".into(),
-                        function: OaiFunctionCall {
-                            name: tc.name.clone(),
-                            arguments: tc.arguments.to_string(),
-                        },
-                    }).collect()),
+                    tool_calls: Some(
+                        tcs.iter()
+                            .map(|tc| OaiToolCallRef {
+                                id: tc.id.clone(),
+                                r#type: "function".into(),
+                                function: OaiFunctionCall {
+                                    name: tc.name.clone(),
+                                    arguments: tc.arguments.to_string(),
+                                },
+                            })
+                            .collect(),
+                    ),
                     tool_call_id: None,
                 },
                 _ => OaiMessage {
@@ -470,7 +488,9 @@ mod tests {
     #[test]
     fn message_conversion_tool_result() {
         let msg = Message {
-            role: Role::Tool { tool_call_id: "call_1".into() },
+            role: Role::Tool {
+                tool_call_id: "call_1".into(),
+            },
             content: MessageContent::ToolResult {
                 tool_call_id: "call_1".into(),
                 output: "done".into(),
@@ -483,11 +503,8 @@ mod tests {
 
     #[test]
     fn request_building() {
-        let backend = OpenAiCompatBackend::new(
-            "http://localhost:8000/v1".into(),
-            "test-model".into(),
-            None,
-        );
+        let backend =
+            OpenAiCompatBackend::new("http://localhost:8000/v1".into(), "test-model".into(), None);
 
         let messages = vec![Message {
             role: Role::User,
@@ -509,11 +526,8 @@ mod tests {
 
     #[test]
     fn request_no_tools() {
-        let backend = OpenAiCompatBackend::new(
-            "http://localhost:8000/v1".into(),
-            "test-model".into(),
-            None,
-        );
+        let backend =
+            OpenAiCompatBackend::new("http://localhost:8000/v1".into(), "test-model".into(), None);
         let req = backend.build_request(&[], &[], &InferenceConfig::default());
         assert!(req.tools.is_none());
     }
@@ -532,11 +546,8 @@ mod tests {
 
     #[test]
     fn endpoint_trailing_slash_stripped() {
-        let backend = OpenAiCompatBackend::new(
-            "http://localhost:8000/v1/".into(),
-            "model".into(),
-            None,
-        );
+        let backend =
+            OpenAiCompatBackend::new("http://localhost:8000/v1/".into(), "model".into(), None);
         assert_eq!(backend.endpoint, "http://localhost:8000/v1");
     }
 }

@@ -35,8 +35,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "0.0.0.0:9443".into())
         .parse()?;
 
-    let machine_name = std::env::var("KITH_MACHINE_NAME")
-        .unwrap_or_else(|_| hostname::get().map(|h| h.to_string_lossy().into()).unwrap_or_else(|_| "unknown".into()));
+    let machine_name = std::env::var("KITH_MACHINE_NAME").unwrap_or_else(|_| {
+        hostname::get()
+            .map(|h| h.to_string_lossy().into())
+            .unwrap_or_else(|_| "unknown".into())
+    });
 
     let commit_window_secs: u64 = std::env::var("KITH_COMMIT_WINDOW_SECS")
         .unwrap_or_else(|_| "600".into())
@@ -88,8 +91,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(%listen_addr, %machine_name, "kith-daemon starting");
 
     // Record daemon start
-    let start_event = Event::new(&machine_name, EventCategory::System, "system.daemon_started", "kith-daemon starting")
-        .with_scope(EventScope::Ops);
+    let start_event = Event::new(
+        &machine_name,
+        EventCategory::System,
+        "system.daemon_started",
+        "kith-daemon starting",
+    )
+    .with_scope(EventScope::Ops);
     event_store.write(start_event).await;
 
     // --- Spawn background tasks ---
@@ -122,9 +130,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         while let Some(obs_event) = drift_rx.recv().await {
             let mut eval = de.lock().await;
             if eval.process_event(&obs_event) {
-                let event = Event::new(&mn, EventCategory::Drift, "drift.file_changed", &obs_event.detail)
-                    .with_path(&obs_event.path)
-                    .with_scope(EventScope::Public);
+                let event = Event::new(
+                    &mn,
+                    EventCategory::Drift,
+                    "drift.file_changed",
+                    &obs_event.detail,
+                )
+                .with_path(&obs_event.path)
+                .with_scope(EventScope::Public);
                 es_drift.write(event).await;
                 let mag = eval.magnitude_sq();
                 if mag > 0.0 {
@@ -138,9 +151,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let es_mesh = event_store.clone();
     let mn_mesh = machine_name.clone();
     let mesh_task = tokio::spawn(async move {
+        use kith_mesh::DefaultMeshManager;
         use kith_mesh::signaling::InMemorySignaling;
         use kith_mesh::wireguard::InMemoryWireguard;
-        use kith_mesh::DefaultMeshManager;
 
         let mesh_config = kith_common::config::MeshConfig {
             identifier: std::env::var("KITH_MESH_ID").unwrap_or_else(|_| "default-mesh".into()),
@@ -155,12 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // are available behind feature flags in kith-mesh.
         let signaling = InMemorySignaling::new();
         let wg = InMemoryWireguard::new("mock-wg-key");
-        let mut manager = DefaultMeshManager::new(
-            mesh_config,
-            mn_mesh.clone(),
-            signaling,
-            wg,
-        );
+        let mut manager = DefaultMeshManager::new(mesh_config, mn_mesh.clone(), signaling, wg);
 
         // Initial announce
         if let Err(e) = manager.announce(None).await {
@@ -180,7 +188,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             EventCategory::Mesh,
                             "mesh.peer_discovered",
                             &format!("{event:?}"),
-                        ).with_scope(EventScope::Public);
+                        )
+                        .with_scope(EventScope::Public);
                         es_mesh.write(mesh_event).await;
                     }
                     if !events.is_empty() {

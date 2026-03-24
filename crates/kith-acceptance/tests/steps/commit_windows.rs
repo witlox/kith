@@ -5,7 +5,8 @@ use crate::KithWorld;
 
 #[given(expr = "the commit window is set to {int} minutes")]
 fn set_commit_window(world: &mut KithWorld, minutes: u64) {
-    world.commit_mgr = kith_daemon::commit::CommitWindowManager::new(Duration::from_secs(minutes * 60));
+    world.commit_mgr =
+        kith_daemon::commit::CommitWindowManager::new(Duration::from_secs(minutes * 60));
 }
 
 #[when(expr = "the agent edits {string}")]
@@ -36,15 +37,23 @@ fn overlay_merged(world: &mut KithWorld) {
 
 #[given(expr = "a pending change exists with a {int}-minute window")]
 fn pending_exists(world: &mut KithWorld, minutes: u64) {
-    world.commit_mgr = kith_daemon::commit::CommitWindowManager::new(Duration::from_secs(minutes * 60));
-    let id = world.commit_mgr.open("test change", Some(Duration::from_millis(1)));
+    world.commit_mgr =
+        kith_daemon::commit::CommitWindowManager::new(Duration::from_secs(minutes * 60));
+    let id = world
+        .commit_mgr
+        .open("test change", Some(Duration::from_millis(1)));
     world.last_pending_id = Some(id);
 }
 
 #[when(expr = "{int} minutes pass without a commit")]
 fn time_passes(world: &mut KithWorld, _minutes: u32) {
     std::thread::sleep(Duration::from_millis(10));
-    world.expired_ids = world.commit_mgr.tick().iter().map(|c| c.id.clone()).collect();
+    world.expired_ids = world
+        .commit_mgr
+        .tick()
+        .iter()
+        .map(|c| c.id.clone())
+        .collect();
 }
 
 #[then("the overlay is discarded and the file reverts")]

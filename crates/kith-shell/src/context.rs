@@ -82,10 +82,7 @@ impl ConversationContext {
             return;
         }
 
-        let has_system = matches!(
-            self.messages.first().map(|m| &m.role),
-            Some(Role::System)
-        );
+        let has_system = matches!(self.messages.first().map(|m| &m.role), Some(Role::System));
 
         if has_system && self.messages.len() > self.max_messages {
             // Keep system prompt + tail
@@ -100,10 +97,7 @@ impl ConversationContext {
 
     /// Reset conversation (keep system prompt if present).
     pub fn reset(&mut self) {
-        let system = if matches!(
-            self.messages.first().map(|m| &m.role),
-            Some(Role::System)
-        ) {
+        let system = if matches!(self.messages.first().map(|m| &m.role), Some(Role::System)) {
             Some(self.messages[0].clone())
         } else {
             None

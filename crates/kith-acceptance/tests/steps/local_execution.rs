@@ -102,8 +102,12 @@ fn calls_backend(world: &mut KithWorld) {
     // would receive this via the intent classification for inputs that
     // don't start with a known command. Accept both classifications.
     assert!(
-        matches!(&world.last_classification, Some(InputClass::Intent(_)) | Some(InputClass::PassThrough(_))),
-        "input should be classified, got {:?}", world.last_classification
+        matches!(
+            &world.last_classification,
+            Some(InputClass::Intent(_)) | Some(InputClass::PassThrough(_))
+        ),
+        "input should be classified, got {:?}",
+        world.last_classification
     );
 }
 

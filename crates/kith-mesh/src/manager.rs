@@ -21,12 +21,7 @@ pub struct DefaultMeshManager<S: SignalingBackend, W: WireguardBackend> {
 }
 
 impl<S: SignalingBackend, W: WireguardBackend> DefaultMeshManager<S, W> {
-    pub fn new(
-        config: MeshConfig,
-        our_machine_id: String,
-        signaling: S,
-        wireguard: W,
-    ) -> Self {
+    pub fn new(config: MeshConfig, our_machine_id: String, signaling: S, wireguard: W) -> Self {
         let mesh_ip = allocate_mesh_ip(&config.mesh_cidr, &our_machine_id);
         Self {
             config,
@@ -56,10 +51,7 @@ impl<S: SignalingBackend, W: WireguardBackend> DefaultMeshManager<S, W> {
 
     /// Discover peers from signaling and configure WireGuard tunnels.
     pub async fn discover_and_connect(&mut self) -> Result<Vec<MeshEvent>, KithError> {
-        let peer_events = self
-            .signaling
-            .fetch_peers(&self.config.identifier)
-            .await?;
+        let peer_events = self.signaling.fetch_peers(&self.config.identifier).await?;
 
         let mut mesh_events = Vec::new();
 
@@ -196,10 +188,7 @@ fn allocate_ipv6_ula(mesh_cidr: &str, machine_id: &str) -> String {
 fn allocate_ipv4(cidr: &str, machine_id: &str) -> String {
     let parts: Vec<&str> = cidr.split('/').collect();
     let base = parts.first().copied().unwrap_or("10.47.0.0");
-    let octets: Vec<u8> = base
-        .split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect();
+    let octets: Vec<u8> = base.split('.').filter_map(|s| s.parse().ok()).collect();
 
     if octets.len() != 4 {
         return base.to_string();
@@ -244,12 +233,7 @@ mod tests {
         let signaling = InMemorySignaling::new();
         let wg = InMemoryWireguard::new("our-wg-pubkey");
 
-        let manager = DefaultMeshManager::new(
-            test_config(),
-            "dev-mac".into(),
-            signaling,
-            wg,
-        );
+        let manager = DefaultMeshManager::new(test_config(), "dev-mac".into(), signaling, wg);
 
         manager
             .announce(Some("10.0.0.1:51820".parse().unwrap()))
@@ -276,12 +260,7 @@ mod tests {
         };
         signaling.publish(&self_event).await.unwrap();
 
-        let mut manager = DefaultMeshManager::new(
-            test_config(),
-            "dev-mac".into(),
-            signaling,
-            wg,
-        );
+        let mut manager = DefaultMeshManager::new(test_config(), "dev-mac".into(), signaling, wg);
 
         let events = manager.discover_and_connect().await.unwrap();
         assert!(events.is_empty());
@@ -302,12 +281,7 @@ mod tests {
         };
         signaling.publish(&peer_event).await.unwrap();
 
-        let mut manager = DefaultMeshManager::new(
-            test_config(),
-            "dev-mac".into(),
-            signaling,
-            wg,
-        );
+        let mut manager = DefaultMeshManager::new(test_config(), "dev-mac".into(), signaling, wg);
 
         let events = manager.discover_and_connect().await.unwrap();
         assert_eq!(events.len(), 1);
@@ -321,18 +295,8 @@ mod tests {
         let wg_a = InMemoryWireguard::new("wg-a");
         let wg_b = InMemoryWireguard::new("wg-b");
 
-        let mut manager_a = DefaultMeshManager::new(
-            test_config(),
-            "dev-mac".into(),
-            sig_a,
-            wg_a,
-        );
-        let mut manager_b = DefaultMeshManager::new(
-            test_config(),
-            "staging-1".into(),
-            sig_b,
-            wg_b,
-        );
+        let mut manager_a = DefaultMeshManager::new(test_config(), "dev-mac".into(), sig_a, wg_a);
+        let mut manager_b = DefaultMeshManager::new(test_config(), "staging-1".into(), sig_b, wg_b);
 
         // Both announce
         manager_a
@@ -371,12 +335,7 @@ mod tests {
         };
         signaling.publish(&peer_event).await.unwrap();
 
-        let mut manager = DefaultMeshManager::new(
-            test_config(),
-            "dev-mac".into(),
-            signaling,
-            wg,
-        );
+        let mut manager = DefaultMeshManager::new(test_config(), "dev-mac".into(), signaling, wg);
 
         manager.discover_and_connect().await.unwrap();
         assert!(!manager.registry().is_reachable("staging-1"));
@@ -422,7 +381,10 @@ mod tests {
     #[test]
     fn ipv6_explicit_prefix() {
         let ip = allocate_mesh_ip("fd12:3456:7890::/64", "dev-mac");
-        assert!(ip.starts_with("fd12:3456:7890::"), "should use given prefix: {ip}");
+        assert!(
+            ip.starts_with("fd12:3456:7890::"),
+            "should use given prefix: {ip}"
+        );
     }
 
     #[test]
@@ -430,7 +392,10 @@ mod tests {
         let ip = allocate_mesh_ip("10.47.0.0/24", "dev-mac");
         assert!(ip.starts_with("10.47.0."), "should be IPv4: {ip}");
         let host: u8 = ip.split('.').last().unwrap().parse().unwrap();
-        assert!(host >= 1 && host <= 253, "host part should be 1-253: {host}");
+        assert!(
+            host >= 1 && host <= 253,
+            "host part should be 1-253: {host}"
+        );
     }
 
     #[test]
@@ -451,15 +416,13 @@ mod tests {
     fn manager_has_mesh_ip() {
         let wg = InMemoryWireguard::new("wg-key");
         let signaling = InMemorySignaling::new();
-        let manager = DefaultMeshManager::new(
-            test_config(),
-            "dev-mac".into(),
-            signaling,
-            wg,
-        );
+        let manager = DefaultMeshManager::new(test_config(), "dev-mac".into(), signaling, wg);
         let ip = manager.our_mesh_ip();
         assert!(!ip.is_empty(), "should have an allocated IP");
         // Default test config uses "10.47.0.0/24" so should be IPv4
-        assert!(ip.starts_with("10.47.0."), "should be IPv4 from test config: {ip}");
+        assert!(
+            ip.starts_with("10.47.0."),
+            "should be IPv4 from test config: {ip}"
+        );
     }
 }
