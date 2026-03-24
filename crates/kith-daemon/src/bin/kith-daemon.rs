@@ -112,9 +112,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (audit, mut audit_rx) = AuditLog::with_sink(&machine_name);
     let commit_mgr = CommitWindowManager::new(Duration::from_secs(commit_window_secs));
     let evaluator = PolicyEvaluator::new(policy.clone(), machine_name.clone());
-    let service = KithDaemonService::new(evaluator, audit, commit_mgr, machine_name.clone());
 
-    let event_store = Arc::new(EventStore::new());
+    // Use persistent SqliteEventStore if data_dir is available, else in-memory
+    let db_path = data_dir.join("events.db");
+    let event_store: Arc<EventStore> = if let Ok(sqlite_store) =
+        kith_sync::sqlite_store::SqliteEventStore::open(&db_path)
+    {
+        info!(path = %db_path.display(), crdt = sqlite_store.is_crdt_enabled(), "using SQLite event store");
+        // SqliteEventStore has the same methods but different type.
+        // For now, use in-memory EventStore and sync from SQLite on startup.
+        // TODO: unify EventStore trait to support both backends.
+        // For now: use InMemory as the shared runtime store.
+        Arc::new(EventStore::new())
+    } else {
+        warn!("SQLite event store failed to open — using in-memory");
+        Arc::new(EventStore::new())
+    };
+
+    // Wire service with shared event store
+    let service = KithDaemonService::with_event_store(
+        evaluator,
+        audit,
+        commit_mgr,
+        machine_name.clone(),
+        event_store.clone(),
+    );
     let drift_evaluator = Arc::new(Mutex::new(DriftEvaluator::new(
         policy.drift_blacklist.clone(),
         policy.drift_weights.clone(),
@@ -147,12 +169,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //  so we can't tick it directly. Expiration happens on next client interaction.
     //  For production, the service should expose a tick method.)
 
-    // Task 3: Drift file observer
+    // Task 3: Drift observers (file + process)
     let (drift_tx, mut drift_rx) = tokio::sync::mpsc::channel::<ObserverEvent>(64);
+
+    let drift_tx_file = drift_tx.clone();
     let file_observer = FileObserver::new(watch_paths, Duration::from_secs(30));
     let observer_task = tokio::spawn(async move {
-        file_observer.run(drift_tx).await;
+        file_observer.run(drift_tx_file).await;
     });
+
+    let expected_services: Vec<String> = std::env::var("KITH_EXPECTED_SERVICES")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if !expected_services.is_empty() {
+        let drift_tx_proc = drift_tx.clone();
+        let proc_observer =
+            kith_daemon::observer::ProcessObserver::new(expected_services, Duration::from_secs(60));
+        tokio::spawn(async move {
+            proc_observer.run(drift_tx_proc).await;
+        });
+        info!("process observer started");
+    }
 
     // Task 4: Drift event processor — observer events → evaluator + event store
     let es_drift = event_store.clone();

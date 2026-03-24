@@ -12,7 +12,10 @@ use crate::daemon_client::DaemonClient;
 use crate::tools;
 
 use kith_common::event::EventScope;
+use kith_state::embedding::{BagOfWordsEmbedder, EmbeddingBackend};
+use kith_state::hybrid::HybridRetriever;
 use kith_state::retrieval::KeywordRetriever;
+use kith_state::vector_index::VectorIndex;
 use kith_sync::store::{EventFilter, EventStore};
 
 /// Result of processing one user input.
@@ -48,6 +51,8 @@ pub struct Agent {
     backend: Box<dyn InferenceBackend>,
     daemon: Option<DaemonClient>,
     event_store: EventStore,
+    embedder: BagOfWordsEmbedder,
+    hybrid_retriever: HybridRetriever,
     todos: Vec<TodoItem>,
 }
 
@@ -62,12 +67,17 @@ impl Agent {
         let mut context = ConversationContext::new(50);
         context.set_system_prompt(system_prompt);
 
+        let embedder = BagOfWordsEmbedder::new(1000);
+        let hybrid_retriever = HybridRetriever::new(VectorIndex::new());
+
         Self {
             classifier: InputClassifier::from_path_env(),
             context,
             backend,
             daemon: None,
             event_store: EventStore::new(),
+            embedder,
+            hybrid_retriever,
             todos: Vec::new(),
         }
     }
@@ -279,11 +289,30 @@ impl Agent {
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 let all = self.event_store.all().await;
-                let results = KeywordRetriever::search(&all, query, &EventScope::Ops, 10);
-                if results.is_empty() {
-                    format!("no results for: {query}")
+
+                // Use hybrid retrieval (keyword + vector) when possible
+                let query_embedding = self.embedder.embed(query).await.ok();
+                let results = if let Some(ref emb) = query_embedding {
+                    // Hybrid: keyword + vector
+                    let hybrid = self
+                        .hybrid_retriever
+                        .search(&all, query, emb, &EventScope::Ops, 10)
+                        .await;
+                    hybrid
+                        .iter()
+                        .map(|r| {
+                            format!(
+                                "[{:.1}] {} on {}: {}",
+                                r.combined_score,
+                                r.event.event_type,
+                                r.event.machine,
+                                r.event.detail
+                            )
+                        })
+                        .collect::<Vec<_>>()
                 } else {
-                    let summaries: Vec<String> = results
+                    // Fallback: keyword only
+                    KeywordRetriever::search(&all, query, &EventScope::Ops, 10)
                         .iter()
                         .map(|r| {
                             format!(
@@ -291,8 +320,13 @@ impl Agent {
                                 r.score, r.event.event_type, r.event.machine, r.event.detail
                             )
                         })
-                        .collect();
-                    summaries.join("\n")
+                        .collect::<Vec<_>>()
+                };
+
+                if results.is_empty() {
+                    format!("no results for: {query}")
+                } else {
+                    results.join("\n")
                 }
             }
             "apply" => {

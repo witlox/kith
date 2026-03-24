@@ -64,15 +64,68 @@ fn sysinfo() -> SysInfo {
         .map(|n| n.get() as u32)
         .unwrap_or(1);
 
+    // Memory info (platform-specific)
+    let (memory_total, memory_available) = get_memory_info();
+
+    // Disk info for root partition
+    let (disk_total, disk_available) = get_disk_info("/");
+
     SysInfo {
         tools,
         services,
-        memory_total: 0, // Platform-specific: /proc/meminfo on Linux, sysctl on macOS
-        memory_available: 0, // Would need platform-specific impl
-        disk_total: 0,
-        disk_available: 0,
+        memory_total,
+        memory_available,
+        disk_total,
+        disk_available,
         cpu_count,
     }
+}
+
+fn get_memory_info() -> (u64, u64) {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(content) = std::fs::read_to_string("/proc/meminfo") {
+            let parse_kb = |key: &str| -> u64 {
+                content
+                    .lines()
+                    .find(|l| l.starts_with(key))
+                    .and_then(|l| l.split_whitespace().nth(1))
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(0)
+                    * 1024
+            };
+            return (parse_kb("MemTotal:"), parse_kb("MemAvailable:"));
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = std::process::Command::new("sysctl")
+            .args(["-n", "hw.memsize"])
+            .output()
+        {
+            let total = String::from_utf8_lossy(&output.stdout)
+                .trim()
+                .parse::<u64>()
+                .unwrap_or(0);
+            return (total, 0); // available not easily accessible on macOS
+        }
+    }
+    (0, 0)
+}
+
+fn get_disk_info(path: &str) -> (u64, u64) {
+    if let Ok(output) = std::process::Command::new("df").args(["-k", path]).output() {
+        let text = String::from_utf8_lossy(&output.stdout);
+        if let Some(line) = text.lines().nth(1) {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            if fields.len() >= 4 {
+                let total = fields[1].parse::<u64>().unwrap_or(0) * 1024;
+                let available = fields[3].parse::<u64>().unwrap_or(0) * 1024;
+                return (total, available);
+            }
+        }
+    }
+    (0, 0)
 }
 
 pub struct KithDaemonService {

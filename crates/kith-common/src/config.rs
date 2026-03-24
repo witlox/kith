@@ -13,6 +13,19 @@ pub struct KithConfig {
     pub shell: Option<ShellConfig>,
     pub mesh: MeshConfig,
     pub inference: Option<InferenceProviderConfig>,
+    pub embedding: Option<EmbeddingConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingConfig {
+    /// "bow" (default, no external service) or "api" (OpenAI-compatible endpoint)
+    pub backend: String,
+    /// API endpoint for "api" backend (e.g., "http://localhost:11434/v1")
+    pub endpoint: Option<String>,
+    /// Model name for "api" backend (e.g., "all-minilm")
+    pub model: Option<String>,
+    /// Vector dimensions (must match model output)
+    pub dimensions: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
