@@ -61,6 +61,31 @@ pub struct InferenceProviderConfig {
     pub api_key_env: Option<String>,
 }
 
+impl KithConfig {
+    /// Load config from ~/.config/kith/config.toml (or the given path).
+    /// Returns None if the file doesn't exist (not an error).
+    pub fn load(path: Option<&std::path::Path>) -> Result<Option<Self>, String> {
+        let config_path = path
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                dirs_next::config_dir().map(|d| d.join("kith").join("config.toml"))
+            })
+            .unwrap_or_else(|| std::path::PathBuf::from(".config/kith/config.toml"));
+
+        if !config_path.exists() {
+            return Ok(None);
+        }
+
+        let content = std::fs::read_to_string(&config_path)
+            .map_err(|e| format!("failed to read {}: {e}", config_path.display()))?;
+
+        let config: KithConfig = toml::from_str(&content)
+            .map_err(|e| format!("failed to parse {}: {e}", config_path.display()))?;
+
+        Ok(Some(config))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,5 +113,35 @@ mod tests {
         let json = serde_json::to_string(&c).unwrap();
         assert!(json.contains("openai-compatible"));
         assert!(json.contains("minimax-m2.5"));
+    }
+
+    #[test]
+    fn config_load_nonexistent_returns_none() {
+        let result = KithConfig::load(Some(std::path::Path::new("/nonexistent/config.toml")));
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn config_load_from_toml_string() {
+        let toml_str = r#"
+[mesh]
+identifier = "test-mesh"
+wireguard_interface = "kith0"
+listen_port = 51820
+mesh_cidr = "10.47.0.0/24"
+nostr_relays = ["wss://relay.example.com"]
+
+[inference]
+backend = "anthropic"
+model = "claude-sonnet-4-20250514"
+api_key_env = "ANTHROPIC_API_KEY"
+"#;
+        let config: KithConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.mesh.identifier, "test-mesh");
+        assert_eq!(config.mesh.listen_port, 51820);
+        assert!(config.inference.is_some());
+        let inf = config.inference.unwrap();
+        assert_eq!(inf.backend, "anthropic");
+        assert_eq!(inf.model, "claude-sonnet-4-20250514");
     }
 }

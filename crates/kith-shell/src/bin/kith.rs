@@ -168,6 +168,20 @@ fn load_or_create_keypair() -> Result<Keypair, Box<dyn std::error::Error>> {
         .join("identity.key");
 
     if key_path.exists() {
+        // Warn if key file has loose permissions
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::metadata(&key_path)?.permissions();
+            let mode = perms.mode() & 0o777;
+            if mode & 0o077 != 0 {
+                eprintln!(
+                    "warning: identity key at {} has permissions {:o}, should be 600",
+                    key_path.display(),
+                    mode
+                );
+            }
+        }
         let bytes = std::fs::read(&key_path)?;
         let secret: [u8; 32] = bytes.as_slice().try_into()
             .map_err(|_| "invalid key file: expected 32 bytes")?;
@@ -178,6 +192,12 @@ fn load_or_create_keypair() -> Result<Keypair, Box<dyn std::error::Error>> {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&key_path, kp.secret_bytes())?;
+        // Set restrictive permissions (FS-01)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))?;
+        }
         let pubkey = kith_common::credential::pubkey_to_hex(&kp.public_key_bytes());
         eprintln!("generated new identity: {pubkey}");
         eprintln!("key stored at: {}", key_path.display());

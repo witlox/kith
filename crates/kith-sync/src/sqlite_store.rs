@@ -76,6 +76,10 @@ impl SqliteEventStore {
             "/usr/lib/crsqlite",
         ];
 
+        // SAFETY: load_extension requires unsafe per rusqlite's FFI contract.
+        // The extension paths are hardcoded constants — no user input reaches here.
+        // Extension loading is disabled immediately after loading to prevent
+        // further dynamic library loads through SQL injection.
         unsafe {
             for path in &paths {
                 if conn.load_extension_enable().is_ok() {
@@ -484,5 +488,40 @@ mod tests {
         // Should still work as plain SQLite
         store.write(drift_event("s", "/a")).await;
         assert_eq!(store.len().await, 1);
+    }
+
+    #[tokio::test]
+    async fn every_event_category_roundtrips() {
+        let store = SqliteEventStore::in_memory().unwrap();
+        let categories = vec![
+            (EventCategory::Drift, "drift.test"),
+            (EventCategory::Exec, "exec.test"),
+            (EventCategory::Apply, "apply.test"),
+            (EventCategory::Commit, "commit.test"),
+            (EventCategory::Rollback, "rollback.test"),
+            (EventCategory::Policy, "policy.test"),
+            (EventCategory::Mesh, "mesh.test"),
+            (EventCategory::Capability, "capability.test"),
+            (EventCategory::System, "system.test"),
+        ];
+
+        for (category, event_type) in &categories {
+            let event = Event::new("test", category.clone(), *event_type, "roundtrip test")
+                .with_scope(EventScope::Ops);
+            store.write(event).await;
+        }
+
+        let all = store.all().await;
+        assert_eq!(all.len(), categories.len());
+
+        for (expected_cat, event_type) in &categories {
+            let found = all.iter().find(|e| e.event_type == *event_type)
+                .unwrap_or_else(|| panic!("missing event type: {event_type}"));
+            assert_eq!(
+                &found.category, expected_cat,
+                "category mismatch for {event_type}: expected {expected_cat:?}, got {:?}",
+                found.category
+            );
+        }
     }
 }
