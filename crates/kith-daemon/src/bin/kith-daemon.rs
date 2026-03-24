@@ -134,7 +134,85 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // Task 5: gRPC server
+    // Task 5: Mesh networking loop (announce + periodic discovery)
+    let es_mesh = event_store.clone();
+    let mn_mesh = machine_name.clone();
+    let mesh_task = tokio::spawn(async move {
+        use kith_mesh::signaling::InMemorySignaling;
+        use kith_mesh::wireguard::InMemoryWireguard;
+        use kith_mesh::DefaultMeshManager;
+
+        let mesh_config = kith_common::config::MeshConfig {
+            identifier: std::env::var("KITH_MESH_ID").unwrap_or_else(|_| "default-mesh".into()),
+            wireguard_interface: "kith0".into(),
+            listen_port: 51820,
+            mesh_cidr: std::env::var("KITH_MESH_CIDR").unwrap_or_else(|_| "kith-mesh".into()),
+            nostr_relays: vec![],
+            derp_url: None,
+        };
+
+        // Use in-memory backends for now. Real Nostr + WireGuard
+        // are available behind feature flags in kith-mesh.
+        let signaling = InMemorySignaling::new();
+        let wg = InMemoryWireguard::new("mock-wg-key");
+        let mut manager = DefaultMeshManager::new(
+            mesh_config,
+            mn_mesh.clone(),
+            signaling,
+            wg,
+        );
+
+        // Initial announce
+        if let Err(e) = manager.announce(None).await {
+            warn!(error = %e, "mesh announce failed");
+        }
+        info!(mesh_ip = %manager.our_mesh_ip(), "mesh initialized");
+
+        // Periodic discovery loop
+        loop {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+
+            match manager.discover_and_connect().await {
+                Ok(events) => {
+                    for event in &events {
+                        let mesh_event = Event::new(
+                            &mn_mesh,
+                            EventCategory::Mesh,
+                            "mesh.peer_discovered",
+                            &format!("{event:?}"),
+                        ).with_scope(EventScope::Public);
+                        es_mesh.write(mesh_event).await;
+                    }
+                    if !events.is_empty() {
+                        info!(new_peers = events.len(), "mesh discovery");
+                    }
+                }
+                Err(e) => warn!(error = %e, "mesh discovery failed"),
+            }
+
+            if let Err(e) = manager.refresh_connectivity().await {
+                warn!(error = %e, "mesh connectivity refresh failed");
+            }
+
+            manager.expire_stale(300); // 5 min timeout
+        }
+    });
+
+    // Task 6: Sync loop (periodic merge with peers)
+    let es_sync = event_store.clone();
+    let sync_task = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            // Sync is a no-op until peers are connected via real mesh.
+            // When peers are available, this would:
+            //   1. For each connected peer: fetch their events via gRPC
+            //   2. Merge into local store: es_sync.merge(peer_events).await
+            //   3. Send our new events to them
+            // The EventStore.merge() handles dedup by event ID.
+        }
+    });
+
+    // Task 7: gRPC server
     let grpc_task = tokio::spawn(async move {
         tonic::transport::Server::builder()
             .add_service(KithDaemonServer::new(service))
@@ -156,6 +234,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Cleanup
+    mesh_task.abort();
+    sync_task.abort();
     observer_task.abort();
     drift_task.abort();
     audit_task.abort();

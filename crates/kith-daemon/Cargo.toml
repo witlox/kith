@@ -7,6 +7,7 @@ description = "Per-machine daemon: gRPC service, policy, drift, commit windows, 
 
 [dependencies]
 kith-common = { path = "../kith-common" }
+kith-mesh = { path = "../kith-mesh" }
 kith-sync = { path = "../kith-sync" }
 tokio = { workspace = true }
 tonic = { workspace = true }

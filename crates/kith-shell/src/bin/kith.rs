@@ -25,32 +25,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = std::env::args().skip(1).collect();
 
-    // Parse basic flags
+    // Load config file (if exists): ~/.config/kith/config.toml
+    let config_path = find_flag(&args, "--config");
+    let config = kith_common::config::KithConfig::load(config_path.as_deref().map(std::path::Path::new))
+        .unwrap_or_else(|e| { eprintln!("warning: config load failed: {e}"); None });
+
+    // Resolve settings: CLI flags > env vars > config file > defaults
+    let cfg_inference = config.as_ref().and_then(|c| c.inference.as_ref());
+
     let backend_type = find_flag(&args, "--backend")
         .or_else(|| std::env::var("KITH_BACKEND").ok())
+        .or_else(|| cfg_inference.map(|i| i.backend.clone()))
         .unwrap_or_else(|| "openai-compatible".into());
 
     let endpoint = find_flag(&args, "--endpoint")
         .or_else(|| std::env::var("KITH_ENDPOINT").ok())
+        .or_else(|| cfg_inference.and_then(|i| i.endpoint.clone()))
         .unwrap_or_else(|| "http://localhost:8000/v1".into());
 
     let model = find_flag(&args, "--model")
         .or_else(|| std::env::var("KITH_MODEL").ok())
+        .or_else(|| cfg_inference.map(|i| i.model.clone()))
         .unwrap_or_else(|| "default".into());
 
     let daemon_addr = find_flag(&args, "--daemon")
         .or_else(|| std::env::var("KITH_DAEMON").ok());
 
+    // Resolve API key: env var name from config, then try common env vars
+    let api_key_env = cfg_inference.and_then(|i| i.api_key_env.clone());
+
     // Build inference backend
     let backend: Box<dyn InferenceBackend> = match backend_type.as_str() {
         "anthropic" => {
-            let api_key = std::env::var("ANTHROPIC_API_KEY")
-                .map_err(|_| "ANTHROPIC_API_KEY env var not set")?;
+            let key_var = api_key_env.as_deref().unwrap_or("ANTHROPIC_API_KEY");
+            let api_key = std::env::var(key_var)
+                .map_err(|_| format!("{key_var} env var not set"))?;
             let model = if model == "default" { "claude-sonnet-4-20250514".into() } else { model };
             Box::new(AnthropicBackend::new(api_key, model))
         }
         _ => {
-            let api_key = std::env::var("OPENAI_API_KEY").ok();
+            let key_var = api_key_env.as_deref().unwrap_or("OPENAI_API_KEY");
+            let api_key = std::env::var(key_var).ok();
             Box::new(OpenAiCompatBackend::new(endpoint, model, api_key))
         }
     };
