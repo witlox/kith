@@ -8,6 +8,8 @@ publish = false
 [features]
 # Enable container-based tests (requires Docker)
 containers = ["testcontainers"]
+# Manual-only: real LLM test via Ollama container. Never in CI.
+local-model = ["containers"]
 
 [dependencies]
 kith-common = { path = "../kith-common" }
@@ -23,3 +25,4 @@ chrono = { workspace = true }
 futures = { workspace = true }
 tokio-stream = "0.1"
 testcontainers = { version = "0.23", optional = true }
+reqwest = { version = "0.12", features = ["json"] }
