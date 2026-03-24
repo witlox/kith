@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod classify;
 pub mod context;
 pub mod daemon_client;

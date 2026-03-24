@@ -8,7 +8,6 @@ use async_trait::async_trait;
 use futures::Stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
 
 use kith_common::error::InferenceError;
 use kith_common::inference::*;
@@ -144,8 +143,8 @@ fn parse_openai_sse_stream(
 ) -> impl Stream<Item = Result<StreamChunk, InferenceError>> + Send {
     use futures::StreamExt;
 
-    let mut buffer = String::new();
-    let mut pending_tool_calls: std::collections::HashMap<usize, PartialToolCall> = std::collections::HashMap::new();
+    let buffer = String::new();
+    let pending_tool_calls: std::collections::HashMap<usize, PartialToolCall> = std::collections::HashMap::new();
 
     futures::stream::unfold(
         (Box::pin(byte_stream), buffer, pending_tool_calls),

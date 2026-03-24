@@ -6,8 +6,7 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use futures::Stream;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use tracing::debug;
+use serde::Serialize;
 
 use kith_common::error::InferenceError;
 use kith_common::inference::*;
@@ -211,9 +210,9 @@ fn parse_anthropic_sse_stream(
 ) -> impl Stream<Item = Result<StreamChunk, InferenceError>> + Send {
     use futures::StreamExt;
 
-    let mut current_tool_id = String::new();
-    let mut current_tool_name = String::new();
-    let mut current_tool_input = String::new();
+    let current_tool_id = String::new();
+    let current_tool_name = String::new();
+    let current_tool_input = String::new();
 
     futures::stream::unfold(
         (Box::pin(byte_stream), String::new(), current_tool_id, current_tool_name, current_tool_input),
