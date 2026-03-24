@@ -219,17 +219,19 @@ impl Agent {
                     .get("query")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let events = self
-                    .event_store
-                    .query(&EventFilter {
-                        limit: Some(20),
-                        ..Default::default()
-                    })
-                    .await;
-                if events.is_empty() {
-                    format!("no events in store for query: {query}")
-                } else {
-                    let summaries: Vec<String> = events
+
+                // Query local event store with keyword matching (FS-06)
+                let all = self.event_store.all().await;
+                let results = if query.is_empty() {
+                    // No query — return recent events
+                    let events = self
+                        .event_store
+                        .query(&EventFilter {
+                            limit: Some(20),
+                            ..Default::default()
+                        })
+                        .await;
+                    events
                         .iter()
                         .map(|e| {
                             format!(
@@ -237,8 +239,37 @@ impl Agent {
                                 e.event_type, e.category, e.machine, e.detail
                             )
                         })
-                        .collect();
-                    summaries.join("\n")
+                        .collect::<Vec<_>>()
+                } else {
+                    // Keyword search over all events
+                    let search = KeywordRetriever::search(&all, query, &EventScope::Ops, 20);
+                    search
+                        .iter()
+                        .map(|r| {
+                            format!(
+                                "[{:.1}] {} on {}: {}",
+                                r.score, r.event.event_type, r.event.machine, r.event.detail
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                };
+
+                // Also query daemon if connected
+                if let Some(ref mut daemon) = self.daemon {
+                    if let Ok(state) = daemon.query().await {
+                        let mut output = results.join("\n");
+                        if !output.is_empty() {
+                            output.push('\n');
+                        }
+                        output.push_str(&format!("[daemon] {}", state));
+                        return output;
+                    }
+                }
+
+                if results.is_empty() {
+                    format!("no events for query: {query}")
+                } else {
+                    results.join("\n")
                 }
             }
             "retrieve" => {

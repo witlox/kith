@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Per-machine daemon: gRPC service, policy, drift, commit windows, audit"
 
+[features]
+# Enable real Nostr + WireGuard mesh in daemon
+real-mesh = ["kith-mesh/nostr", "kith-mesh/wireguard"]
+
 [dependencies]
 kith-common = { path = "../kith-common" }
 kith-mesh = { path = "../kith-mesh" }

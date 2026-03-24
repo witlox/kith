@@ -30,7 +30,15 @@ use kith_sync::store::EventStore;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    // --- Config from env ---
+    // --- Load config file if available ---
+    let config = kith_common::config::KithConfig::load(None)
+        .unwrap_or_else(|e| {
+            eprintln!("warning: config load failed: {e}");
+            None
+        });
+    let cfg_daemon = config.as_ref().and_then(|c| c.daemon.as_ref());
+
+    // --- Config: env vars override config file ---
     let listen_addr: SocketAddr = std::env::var("KITH_LISTEN_ADDR")
         .unwrap_or_else(|_| "0.0.0.0:9443".into())
         .parse()?;
