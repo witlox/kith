@@ -1,5 +1,6 @@
 pub mod audit;
 pub mod commit;
+pub mod containment;
 pub mod drift;
 pub mod exec;
 pub mod observer;

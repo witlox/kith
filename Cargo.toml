@@ -41,3 +41,4 @@ rustyline = "15"
 [workspace.lints.clippy]
 field_reassign_with_default = "allow"
 result_large_err = "allow"
+cloned_ref_to_slice_refs = "allow"
