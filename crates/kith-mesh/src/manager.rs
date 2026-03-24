@@ -14,6 +14,7 @@ use crate::wireguard::WireguardBackend;
 pub struct DefaultMeshManager<S: SignalingBackend, W: WireguardBackend> {
     config: MeshConfig,
     our_machine_id: String,
+    our_mesh_ip: String,
     signaling: S,
     wireguard: W,
     registry: PeerRegistry,
@@ -26,12 +27,14 @@ impl<S: SignalingBackend, W: WireguardBackend> DefaultMeshManager<S, W> {
         signaling: S,
         wireguard: W,
     ) -> Self {
+        let mesh_ip = allocate_mesh_ip(&config.mesh_cidr, &our_machine_id);
         Self {
             config,
             our_machine_id,
+            our_mesh_ip: mesh_ip,
             signaling,
             wireguard,
-            registry: PeerRegistry::new(3600), // 1 hour max event age
+            registry: PeerRegistry::new(3600),
         }
     }
 
@@ -42,7 +45,7 @@ impl<S: SignalingBackend, W: WireguardBackend> DefaultMeshManager<S, W> {
             machine_id: self.our_machine_id.clone(),
             wireguard_pubkey: own_pubkey,
             endpoint: endpoint.map_or_else(String::new, |e| e.to_string()),
-            mesh_ip: String::new(), // TODO: allocate from mesh_cidr
+            mesh_ip: self.our_mesh_ip.clone(),
             timestamp: chrono::Utc::now(),
         };
 
@@ -135,6 +138,88 @@ impl<S: SignalingBackend, W: WireguardBackend> DefaultMeshManager<S, W> {
     pub fn expire_stale(&mut self, timeout_secs: i64) -> Vec<MeshEvent> {
         self.registry.expire_stale(timeout_secs)
     }
+
+    pub fn our_mesh_ip(&self) -> &str {
+        &self.our_mesh_ip
+    }
+}
+
+/// Allocate a deterministic mesh IP. Prefers IPv6 ULA, falls back to IPv4 CIDR.
+///
+/// IPv6 ULA (default): derives a /64 prefix from mesh_identifier, then a /128
+/// host address from machine_id. Format: `fd<mesh_hash>::<machine_hash>`
+///
+/// IPv4 fallback: if mesh_cidr contains dots (e.g. "10.47.0.0/24"), allocates
+/// a host address from the CIDR based on machine_id hash.
+fn allocate_mesh_ip(mesh_cidr: &str, machine_id: &str) -> String {
+    if mesh_cidr.contains('.') {
+        allocate_ipv4(mesh_cidr, machine_id)
+    } else {
+        allocate_ipv6_ula(mesh_cidr, machine_id)
+    }
+}
+
+/// Generate a deterministic IPv6 ULA address from mesh identifier + machine id.
+/// mesh_cidr can be a ULA prefix like "fd00::/64" or just the mesh identifier string.
+/// Result: fd<40-bit global ID from mesh>::<16-bit subnet>:<48-bit interface from machine>
+fn allocate_ipv6_ula(mesh_cidr: &str, machine_id: &str) -> String {
+    // If it's already an IPv6 prefix, extract the base
+    if mesh_cidr.contains(':') {
+        let base = mesh_cidr.split('/').next().unwrap_or("fd00::");
+        let machine_hash = hash_to_u64(machine_id);
+        let h1 = ((machine_hash >> 16) & 0xFFFF) as u16;
+        let h2 = (machine_hash & 0xFFFF) as u16;
+        return format!("{base}{h1:x}:{h2:x}");
+    }
+
+    // Otherwise, derive the full ULA from the mesh identifier string
+    let mesh_hash = hash_to_u64(mesh_cidr);
+    let machine_hash = hash_to_u64(machine_id);
+
+    // fd + 40-bit global ID (from mesh) + 16-bit subnet (0001) + 64-bit interface (from machine)
+    let global_id = mesh_hash & 0xFF_FFFF_FFFF; // 40 bits
+    let g1 = ((global_id >> 32) & 0xFF) as u8;
+    let g2 = ((global_id >> 16) & 0xFFFF) as u16;
+    let g3 = (global_id & 0xFFFF) as u16;
+
+    let iface_hi = ((machine_hash >> 48) & 0xFFFF) as u16;
+    let iface_mid1 = ((machine_hash >> 32) & 0xFFFF) as u16;
+    let iface_mid2 = ((machine_hash >> 16) & 0xFFFF) as u16;
+    let iface_lo = (machine_hash & 0xFFFF) as u16;
+
+    format!(
+        "fd{g1:02x}:{g2:04x}:{g3:04x}:1:{iface_hi:x}:{iface_mid1:x}:{iface_mid2:x}:{iface_lo:x}"
+    )
+}
+
+/// Allocate IPv4 from CIDR (fallback).
+fn allocate_ipv4(cidr: &str, machine_id: &str) -> String {
+    let parts: Vec<&str> = cidr.split('/').collect();
+    let base = parts.first().copied().unwrap_or("10.47.0.0");
+    let octets: Vec<u8> = base
+        .split('.')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+
+    if octets.len() != 4 {
+        return base.to_string();
+    }
+
+    let hash: u32 = hash_to_u64(machine_id) as u32;
+    let host_part = (hash % 253 + 1) as u8;
+
+    format!("{}.{}.{}.{}", octets[0], octets[1], octets[2], host_part)
+}
+
+/// Simple deterministic hash — not cryptographic, just for address derivation.
+fn hash_to_u64(input: &str) -> u64 {
+    // FNV-1a 64-bit
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in input.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
 }
 
 #[cfg(test)]
@@ -301,5 +386,80 @@ mod tests {
         manager.refresh_connectivity().await.unwrap();
 
         assert!(manager.registry().is_reachable("staging-1"));
+    }
+
+    // --- IP allocation tests ---
+
+    #[test]
+    fn ipv6_ula_from_mesh_identifier() {
+        let ip = allocate_mesh_ip("my-mesh-2026", "dev-mac");
+        assert!(ip.starts_with("fd"), "should be ULA: {ip}");
+        assert!(ip.contains(':'), "should be IPv6: {ip}");
+    }
+
+    #[test]
+    fn ipv6_ula_deterministic() {
+        let ip1 = allocate_mesh_ip("my-mesh", "dev-mac");
+        let ip2 = allocate_mesh_ip("my-mesh", "dev-mac");
+        assert_eq!(ip1, ip2, "same input should produce same IP");
+    }
+
+    #[test]
+    fn ipv6_ula_different_machines_different_ips() {
+        let ip1 = allocate_mesh_ip("my-mesh", "dev-mac");
+        let ip2 = allocate_mesh_ip("my-mesh", "staging-1");
+        assert_ne!(ip1, ip2, "different machines should get different IPs");
+    }
+
+    #[test]
+    fn ipv6_ula_different_meshes_different_prefixes() {
+        let ip1 = allocate_mesh_ip("mesh-a", "dev-mac");
+        let ip2 = allocate_mesh_ip("mesh-b", "dev-mac");
+        // Same machine in different meshes should get different prefixes
+        assert_ne!(ip1, ip2);
+    }
+
+    #[test]
+    fn ipv6_explicit_prefix() {
+        let ip = allocate_mesh_ip("fd12:3456:7890::/64", "dev-mac");
+        assert!(ip.starts_with("fd12:3456:7890::"), "should use given prefix: {ip}");
+    }
+
+    #[test]
+    fn ipv4_fallback() {
+        let ip = allocate_mesh_ip("10.47.0.0/24", "dev-mac");
+        assert!(ip.starts_with("10.47.0."), "should be IPv4: {ip}");
+        let host: u8 = ip.split('.').last().unwrap().parse().unwrap();
+        assert!(host >= 1 && host <= 253, "host part should be 1-253: {host}");
+    }
+
+    #[test]
+    fn ipv4_deterministic() {
+        let ip1 = allocate_mesh_ip("10.47.0.0/24", "dev-mac");
+        let ip2 = allocate_mesh_ip("10.47.0.0/24", "dev-mac");
+        assert_eq!(ip1, ip2);
+    }
+
+    #[test]
+    fn ipv4_different_machines() {
+        let ip1 = allocate_mesh_ip("10.47.0.0/24", "dev-mac");
+        let ip2 = allocate_mesh_ip("10.47.0.0/24", "staging-1");
+        assert_ne!(ip1, ip2);
+    }
+
+    #[test]
+    fn manager_has_mesh_ip() {
+        let wg = InMemoryWireguard::new("wg-key");
+        let signaling = InMemorySignaling::new();
+        let manager = DefaultMeshManager::new(
+            test_config(),
+            "dev-mac".into(),
+            signaling,
+            wg,
+        );
+        let ip = manager.our_mesh_ip();
+        assert!(!ip.is_empty(), "should have an allocated IP");
+        // Default test config uses "10.47.0.0/24" so should be IPv4
+        assert!(ip.starts_with("10.47.0."), "should be IPv4 from test config: {ip}");
     }
 }

@@ -1,13 +1,14 @@
-//! Audit log — append-only local event store.
+//! Audit log — append-only local event store with optional write-through to EventStore.
 //! Every state-changing action produces an entry (INV-SEC-4).
 
 use kith_common::event::{Event, EventCategory, EventScope};
+use tokio::sync::mpsc;
 
-/// Append-only audit log. In production this writes to cr-sqlite.
-/// For testing, this is an in-memory vec.
+/// Append-only audit log. Writes to local vec + optional EventStore sink.
 pub struct AuditLog {
     entries: Vec<Event>,
     machine: String,
+    sink: Option<mpsc::UnboundedSender<Event>>,
 }
 
 impl AuditLog {
@@ -15,7 +16,29 @@ impl AuditLog {
         Self {
             entries: Vec::new(),
             machine: machine.into(),
+            sink: None,
         }
+    }
+
+    /// Create with a write-through sink to EventStore.
+    /// The receiver should be consumed by a task that writes to EventStore.
+    pub fn with_sink(machine: impl Into<String>) -> (Self, mpsc::UnboundedReceiver<Event>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (
+            Self {
+                entries: Vec::new(),
+                machine: machine.into(),
+                sink: Some(tx),
+            },
+            rx,
+        )
+    }
+
+    fn emit(&mut self, event: Event) {
+        if let Some(ref sink) = self.sink {
+            let _ = sink.send(event.clone());
+        }
+        self.entries.push(event);
     }
 
     /// Record an exec event (command executed or denied).
@@ -47,7 +70,7 @@ impl AuditLog {
             .with_metadata(metadata)
             .with_scope(EventScope::Ops);
 
-        self.entries.push(event);
+        self.emit(event);
     }
 
     /// Record a change event (applied, committed, rolled back, expired).
@@ -66,33 +89,30 @@ impl AuditLog {
             }))
             .with_scope(EventScope::Ops);
 
-        self.entries.push(event);
+        self.emit(event);
     }
 
     /// Record a system event.
     pub fn record_system(&mut self, event_type: &str, detail: &str) {
         let event = Event::new(&self.machine, EventCategory::System, event_type, detail)
             .with_scope(EventScope::Ops);
-        self.entries.push(event);
+        self.emit(event);
     }
 
-    /// Get all entries (for testing and querying).
     pub fn entries(&self) -> &[Event] {
         &self.entries
     }
 
-    /// Get entries filtered by scope.
     pub fn entries_for_scope(&self, scope: &EventScope) -> Vec<&Event> {
         self.entries
             .iter()
             .filter(|e| match scope {
-                EventScope::Ops => true, // ops sees everything
+                EventScope::Ops => true,
                 EventScope::Public => e.scope == EventScope::Public,
             })
             .collect()
     }
 
-    /// Count entries.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -153,12 +173,10 @@ mod tests {
     #[test]
     fn scope_filtering() {
         let mut log = AuditLog::new("staging-1");
-        log.record_exec("pim", "docker ps", Some(0), None); // Ops scope
-        log.record_system("system.daemon_started", "v0.1.0"); // Ops scope
+        log.record_exec("pim", "docker ps", Some(0), None);
+        log.record_system("system.daemon_started", "v0.1.0");
 
-        // Ops sees everything
         assert_eq!(log.entries_for_scope(&EventScope::Ops).len(), 2);
-        // Public sees nothing (all entries are Ops-scoped)
         assert_eq!(log.entries_for_scope(&EventScope::Public).len(), 0);
     }
 
@@ -175,5 +193,21 @@ mod tests {
         let mut log = AuditLog::new("prod-1");
         log.record_exec("pim", "cmd", Some(0), None);
         assert_eq!(log.entries()[0].machine, "prod-1");
+    }
+
+    #[test]
+    fn sink_receives_events() {
+        let (mut log, mut rx) = AuditLog::with_sink("staging-1");
+        log.record_exec("pim", "docker ps", Some(0), None);
+        log.record_system("system.test", "detail");
+
+        // Local entries stored
+        assert_eq!(log.len(), 2);
+
+        // Sink received both
+        let e1 = rx.try_recv().unwrap();
+        assert_eq!(e1.event_type, "exec.command");
+        let e2 = rx.try_recv().unwrap();
+        assert_eq!(e2.event_type, "system.test");
     }
 }

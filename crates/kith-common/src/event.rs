@@ -29,6 +29,12 @@ pub enum EventCategory {
     System,
 }
 
+impl std::fmt::Display for EventCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum EventScope {
     Public,

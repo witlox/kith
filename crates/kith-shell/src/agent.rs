@@ -11,6 +11,10 @@ use crate::context::ConversationContext;
 use crate::daemon_client::DaemonClient;
 use crate::tools;
 
+use kith_common::event::EventScope;
+use kith_state::retrieval::KeywordRetriever;
+use kith_sync::store::{EventFilter, EventStore};
+
 /// Result of processing one user input.
 #[derive(Debug)]
 pub enum AgentOutput {
@@ -38,6 +42,14 @@ pub struct Agent {
     context: ConversationContext,
     backend: Box<dyn InferenceBackend>,
     daemon: Option<DaemonClient>,
+    event_store: EventStore,
+    todos: Vec<TodoItem>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TodoItem {
+    pub text: String,
+    pub done: bool,
 }
 
 impl Agent {
@@ -53,6 +65,8 @@ impl Agent {
             context,
             backend,
             daemon: None,
+            event_store: EventStore::new(),
+            todos: Vec::new(),
         }
     }
 
@@ -183,11 +197,31 @@ impl Agent {
             }
             "fleet_query" => {
                 let query = tc.arguments.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                format!("fleet_query not yet connected: {query}")
+                let events = self.event_store.query(&EventFilter {
+                    limit: Some(20),
+                    ..Default::default()
+                }).await;
+                if events.is_empty() {
+                    format!("no events in store for query: {query}")
+                } else {
+                    let summaries: Vec<String> = events.iter().map(|e| {
+                        format!("[{}] {} on {}: {}", e.event_type, e.category, e.machine, e.detail)
+                    }).collect();
+                    summaries.join("\n")
+                }
             }
             "retrieve" => {
                 let query = tc.arguments.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                format!("retrieve not yet connected: {query}")
+                let all = self.event_store.all().await;
+                let results = KeywordRetriever::search(&all, query, &EventScope::Ops, 10);
+                if results.is_empty() {
+                    format!("no results for: {query}")
+                } else {
+                    let summaries: Vec<String> = results.iter().map(|r| {
+                        format!("[{:.1}] {} on {}: {}", r.score, r.event.event_type, r.event.machine, r.event.detail)
+                    }).collect();
+                    summaries.join("\n")
+                }
             }
             "apply" => {
                 let host = tc.arguments.get("host").and_then(|v| v.as_str()).unwrap_or("local");
@@ -228,7 +262,36 @@ impl Agent {
             "todo" => {
                 let action = tc.arguments.get("action").and_then(|v| v.as_str()).unwrap_or("list");
                 let text = tc.arguments.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                format!("todo {action}: {text} (not yet implemented)")
+                match action {
+                    "add" => {
+                        self.todos.push(TodoItem { text: text.into(), done: false });
+                        format!("added: {text}")
+                    }
+                    "list" => {
+                        if self.todos.is_empty() {
+                            "no todos".into()
+                        } else {
+                            self.todos.iter().enumerate().map(|(i, t)| {
+                                let mark = if t.done { "x" } else { " " };
+                                format!("[{mark}] {}: {}", i + 1, t.text)
+                            }).collect::<Vec<_>>().join("\n")
+                        }
+                    }
+                    "done" => {
+                        if let Some(item) = self.todos.iter_mut().find(|t| t.text == text && !t.done) {
+                            item.done = true;
+                            format!("done: {text}")
+                        } else {
+                            format!("not found: {text}")
+                        }
+                    }
+                    "clear" => {
+                        let count = self.todos.len();
+                        self.todos.clear();
+                        format!("cleared {count} todos")
+                    }
+                    _ => format!("unknown todo action: {action}")
+                }
             }
             other => format!("unknown tool: {other}"),
         }
