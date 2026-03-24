@@ -7,9 +7,17 @@ publish = false
 
 [dependencies]
 kith-common = { path = "../kith-common" }
+kith-daemon = { path = "../kith-daemon" }
+kith-shell = { path = "../kith-shell" }
+kith-mesh = { path = "../kith-mesh" }
+kith-sync = { path = "../kith-sync" }
+kith-state = { path = "../kith-state" }
 cucumber = { workspace = true }
 tokio = { workspace = true }
+chrono = { workspace = true }
 serde_json = { workspace = true }
+futures = { workspace = true }
+tokio-stream = "0.1"
 
 [[test]]
 name = "acceptance"
