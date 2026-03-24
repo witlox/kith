@@ -98,6 +98,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // --- Containment config ---
+    let containment_config = cfg_daemon
+        .map(|d| d.containment.clone())
+        .unwrap_or_default();
+    info!(
+        cgroups = containment_config.cgroups,
+        overlayfs = containment_config.overlayfs,
+        "containment config"
+    );
+
     // --- Create components ---
     let (audit, mut audit_rx) = AuditLog::with_sink(&machine_name);
     let commit_mgr = CommitWindowManager::new(Duration::from_secs(commit_window_secs));

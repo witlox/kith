@@ -16,10 +16,70 @@ use crate::proto::kith_daemon_server::KithDaemon;
 use kith_common::credential::Credential;
 use kith_common::policy::{ActionCategory, PolicyDecision};
 
+struct SysInfo {
+    tools: Vec<String>,
+    services: Vec<String>,
+    memory_total: u64,
+    memory_available: u64,
+    disk_total: u64,
+    disk_available: u64,
+    cpu_count: u32,
+}
+
+fn sysinfo() -> SysInfo {
+    // Discover common tools in PATH
+    let tools: Vec<String> = [
+        "docker", "git", "python3", "node", "cargo", "kubectl", "nginx",
+    ]
+    .iter()
+    .filter(|cmd| {
+        std::process::Command::new("which")
+            .arg(cmd)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    })
+    .map(|s| s.to_string())
+    .collect();
+
+    // Check running services (basic: ps-based)
+    let services: Vec<String> = std::process::Command::new("ps")
+        .args(["aux"])
+        .output()
+        .ok()
+        .map(|o| {
+            let output = String::from_utf8_lossy(&o.stdout);
+            let mut found = Vec::new();
+            for svc in ["docker", "nginx", "postgres", "redis", "sshd"] {
+                if output.contains(svc) {
+                    found.push(svc.to_string());
+                }
+            }
+            found
+        })
+        .unwrap_or_default();
+
+    // CPU count
+    let cpu_count = std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(1);
+
+    SysInfo {
+        tools,
+        services,
+        memory_total: 0, // Platform-specific: /proc/meminfo on Linux, sysctl on macOS
+        memory_available: 0, // Would need platform-specific impl
+        disk_total: 0,
+        disk_available: 0,
+        cpu_count,
+    }
+}
+
 pub struct KithDaemonService {
     policy: Arc<PolicyEvaluator>,
     audit: Arc<Mutex<AuditLog>>,
     commit_mgr: Arc<Mutex<CommitWindowManager>>,
+    tx_mgr: Arc<Mutex<crate::containment::TransactionManager>>,
     event_store: Arc<kith_sync::store::EventStore>,
     machine_name: String,
 }
@@ -31,10 +91,14 @@ impl KithDaemonService {
         commit_mgr: CommitWindowManager,
         machine_name: String,
     ) -> Self {
+        let backup_dir = std::env::temp_dir().join("kith-containment");
         Self {
             policy: Arc::new(policy),
             audit: Arc::new(Mutex::new(audit)),
             commit_mgr: Arc::new(Mutex::new(commit_mgr)),
+            tx_mgr: Arc::new(Mutex::new(crate::containment::TransactionManager::new(
+                backup_dir,
+            ))),
             event_store: Arc::new(kith_sync::store::EventStore::new()),
             machine_name,
         }
@@ -48,10 +112,14 @@ impl KithDaemonService {
         machine_name: String,
         event_store: Arc<kith_sync::store::EventStore>,
     ) -> Self {
+        let backup_dir = std::env::temp_dir().join("kith-containment");
         Self {
             policy: Arc::new(policy),
             audit: Arc::new(Mutex::new(audit)),
             commit_mgr: Arc::new(Mutex::new(commit_mgr)),
+            tx_mgr: Arc::new(Mutex::new(crate::containment::TransactionManager::new(
+                backup_dir,
+            ))),
             event_store,
             machine_name,
         }
@@ -223,6 +291,12 @@ impl KithDaemon for KithDaemonService {
 
         let pending_id = self.commit_mgr.lock().await.open(&req.command, duration);
 
+        // Begin containment transaction (backup files before change)
+        // For now, no specific paths — the transaction tracks the pending_id
+        if let Err(e) = self.tx_mgr.lock().await.begin(pending_id.clone(), &[]) {
+            tracing::warn!(error = %e, "containment: transaction begin failed (continuing without)");
+        }
+
         self.audit
             .lock()
             .await
@@ -250,6 +324,8 @@ impl KithDaemon for KithDaemonService {
 
         match self.commit_mgr.lock().await.commit(&req.change_id) {
             Ok(_) => {
+                // Commit containment transaction (make changes permanent)
+                let _ = self.tx_mgr.lock().await.commit(&req.change_id);
                 self.audit
                     .lock()
                     .await
@@ -279,6 +355,8 @@ impl KithDaemon for KithDaemonService {
 
         match self.commit_mgr.lock().await.rollback(&req.change_id) {
             Ok(_) => {
+                // Rollback containment transaction (revert changes)
+                let _ = self.tx_mgr.lock().await.rollback(&req.change_id);
                 self.audit
                     .lock()
                     .await
@@ -341,13 +419,23 @@ impl KithDaemon for KithDaemonService {
             &ActionCategory::Capabilities,
         )?;
 
+        // Gather real system info
+        let sys_info = sysinfo();
+
         Ok(Response::new(proto::CapabilityReport {
             hostname: self.machine_name.clone(),
             os: std::env::consts::OS.into(),
             arch: std::env::consts::ARCH.into(),
-            installed_tools: vec![],
-            running_services: vec![],
-            resources: None,
+            installed_tools: sys_info.tools,
+            running_services: sys_info.services,
+            resources: Some(proto::ResourceInfo {
+                memory_total_bytes: sys_info.memory_total,
+                memory_available_bytes: sys_info.memory_available,
+                disk_total_bytes: sys_info.disk_total,
+                disk_available_bytes: sys_info.disk_available,
+                cpu_count: sys_info.cpu_count,
+                gpus: vec![],
+            }),
             reported_at: None,
         }))
     }
