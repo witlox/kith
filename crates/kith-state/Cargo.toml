@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Vector index and semantic retrieval over operational state"
 
+[features]
+# Enable API-based embedding backend (OpenAI-compatible /v1/embeddings)
+api-embeddings = ["dep:reqwest"]
+
 [dependencies]
 kith-common = { path = "../kith-common" }
 tokio = { workspace = true }
@@ -13,6 +17,7 @@ chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
+reqwest = { version = "0.12", features = ["json"], optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
