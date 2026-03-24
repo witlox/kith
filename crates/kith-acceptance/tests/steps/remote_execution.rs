@@ -22,8 +22,19 @@ fn user_has_scope(world: &mut KithWorld, scope: String, machine: String) {
     world.current_user = Some("current-user".into());
 }
 
-#[when(expr = "the agent calls remote\\({string}, {string}\\)")]
-fn agent_calls_remote(world: &mut KithWorld, machine: String, command: String) {
+#[when(regex = r#"^the agent calls remote\("([^"]*)", "([^"]*)"\)$"#)]
+fn agent_calls_remote_when(world: &mut KithWorld, machine: String, command: String) {
+    let user = world.current_user.as_deref().unwrap_or("unknown");
+    world.last_policy_decision = Some(match world.policy.scope_for(user) {
+        Some(scope) => MachinePolicy::evaluate(&scope, &ActionCategory::Exec),
+        None => PolicyDecision::Deny { reason: "unknown user".into() },
+    });
+}
+
+#[then(regex = r#"^the agent calls remote\("([^"]*)", "([^"]*)"\)$"#)]
+fn agent_calls_remote_then(world: &mut KithWorld, _machine: String, _command: String) {
+    // The intent classification happened; the agent would produce a remote() call.
+    // Also evaluate policy for the subsequent "verifies scope" step.
     let user = world.current_user.as_deref().unwrap_or("unknown");
     world.last_policy_decision = Some(match world.policy.scope_for(user) {
         Some(scope) => MachinePolicy::evaluate(&scope, &ActionCategory::Exec),

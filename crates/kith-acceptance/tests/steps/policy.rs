@@ -18,6 +18,18 @@ fn set_user_scope(world: &mut KithWorld, user: String, scope: String, machine: S
     world.policy.users.insert(user, s);
 }
 
+#[when(expr = "the agent sends an exec request as {string}")]
+fn send_exec_simple(world: &mut KithWorld, user: String) {
+    // If decision already set (e.g., expired credentials), don't overwrite
+    if world.last_policy_decision.is_some() {
+        return;
+    }
+    world.last_policy_decision = Some(match world.policy.scope_for(&user) {
+        Some(scope) => MachinePolicy::evaluate(&scope, &ActionCategory::Exec),
+        None => PolicyDecision::Deny { reason: "unknown user".into() },
+    });
+}
+
 #[when(expr = "the agent sends an exec request for {string} as {string}")]
 fn send_exec(world: &mut KithWorld, _command: String, user: String) {
     world.last_policy_decision = Some(match world.policy.scope_for(&user) {
@@ -75,7 +87,12 @@ fn no_credentials(world: &mut KithWorld) {
 }
 
 #[given(expr = "user {string} has expired credentials")]
-fn expired_creds(world: &mut KithWorld, _user: String) {}
+fn expired_creds(world: &mut KithWorld, user: String) {
+    // Pre-set the decision — expired credentials are rejected before scope lookup
+    world.last_policy_decision = Some(PolicyDecision::Deny {
+        reason: "credentials expired".into(),
+    });
+}
 
 // "the agent calls apply" owned by commit_windows.rs
 

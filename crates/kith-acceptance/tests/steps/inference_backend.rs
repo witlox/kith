@@ -51,7 +51,7 @@ fn shell_restarted(_world: &mut KithWorld) {}
 #[then("the new backend is used for all inference")]
 fn new_backend_used(_world: &mut KithWorld) {}
 
-#[then("no other component \\(daemon, mesh, sync, state\\) is affected")]
+#[then(regex = r"^no other component \(daemon, mesh, sync, state\) is affected$")]
 fn no_other_affected(_world: &mut KithWorld) {}
 
 #[given("any backend is configured")]
@@ -77,7 +77,7 @@ fn tokens_stream(_world: &mut KithWorld) {}
 #[then("tool call boundaries are detected in the stream")]
 fn boundaries_detected(_world: &mut KithWorld) {}
 
-#[when(expr = "the backend becomes unreachable \\(network failure, GPU busy\\)")]
+#[given(regex = r"^the backend becomes unreachable \(network failure, GPU busy\)$")]
 fn backend_becomes_unreachable(world: &mut KithWorld) {
     world.inference_reachable = false;
     world.mock_backend.set_healthy(false);
@@ -137,7 +137,7 @@ fn adjusts_formatting(_world: &mut KithWorld) {}
 #[then("the behavioral instructions remain identical")]
 fn behavioral_identical(_world: &mut KithWorld) {}
 
-#[given("a backend that produces reasoning traces \\(thinking tokens\\)")]
+#[given(regex = r"^a backend that produces reasoning traces \(thinking tokens\)$")]
 fn thinking_backend(world: &mut KithWorld) {
     world.current_backend_name = "thinking-model".into();
 }
@@ -145,7 +145,7 @@ fn thinking_backend(world: &mut KithWorld) {
 #[when("the model reasons before a tool call")]
 fn model_reasons(_world: &mut KithWorld) {}
 
-#[then("the reasoning is rendered in the terminal \\(collapsible\\)")]
+#[then(regex = r"^the reasoning is rendered in the terminal \(collapsible\)$")]
 fn reasoning_rendered(_world: &mut KithWorld) {}
 
 #[given("a backend that does not produce reasoning traces")]
