@@ -114,7 +114,7 @@ impl SignalingBackend for NostrSignaling {
                     endpoint: get_tag("endpoint").unwrap_or_default(),
                     mesh_ip: get_tag("mesh_ip").unwrap_or_default(),
                     timestamp: chrono::DateTime::from_timestamp(
-                        event.created_at.as_u64() as i64,
+                        event.created_at.as_secs() as i64,
                         0,
                     )
                     .unwrap_or_else(chrono::Utc::now),
