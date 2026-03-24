@@ -20,6 +20,7 @@ pub struct KithDaemonService {
     policy: Arc<PolicyEvaluator>,
     audit: Arc<Mutex<AuditLog>>,
     commit_mgr: Arc<Mutex<CommitWindowManager>>,
+    event_store: Arc<kith_sync::store::EventStore>,
     machine_name: String,
 }
 
@@ -34,6 +35,24 @@ impl KithDaemonService {
             policy: Arc::new(policy),
             audit: Arc::new(Mutex::new(audit)),
             commit_mgr: Arc::new(Mutex::new(commit_mgr)),
+            event_store: Arc::new(kith_sync::store::EventStore::new()),
+            machine_name,
+        }
+    }
+
+    /// Create with an external EventStore (for sharing with background tasks).
+    pub fn with_event_store(
+        policy: PolicyEvaluator,
+        audit: AuditLog,
+        commit_mgr: CommitWindowManager,
+        machine_name: String,
+        event_store: Arc<kith_sync::store::EventStore>,
+    ) -> Self {
+        Self {
+            policy: Arc::new(policy),
+            audit: Arc::new(Mutex::new(audit)),
+            commit_mgr: Arc::new(Mutex::new(commit_mgr)),
+            event_store,
             machine_name,
         }
     }
@@ -330,6 +349,66 @@ impl KithDaemon for KithDaemonService {
             running_services: vec![],
             resources: None,
             reported_at: None,
+        }))
+    }
+
+    async fn exchange_events(
+        &self,
+        request: Request<proto::ExchangeEventsRequest>,
+    ) -> Result<Response<proto::ExchangeEventsResponse>, Status> {
+        let req = request.into_inner();
+        let _user = self.auth(
+            req.credential.as_ref(),
+            b"exchange_events",
+            &ActionCategory::Events,
+        )?;
+
+        // Merge incoming events into our store
+        let incoming: Vec<kith_common::event::Event> = req
+            .our_events
+            .iter()
+            .map(|e| kith_common::event::Event {
+                id: e.event_id.clone(),
+                machine: e.origin_host.clone(),
+                category: kith_common::event::EventCategory::System, // simplified
+                event_type: e.event_type.clone(),
+                path: None,
+                detail: e.content_json.clone(),
+                metadata: serde_json::from_str(&e.metadata_json).unwrap_or(serde_json::Value::Null),
+                scope: kith_common::event::EventScope::Ops,
+                timestamp: chrono::Utc::now(),
+            })
+            .collect();
+
+        let merged = self.event_store.merge(incoming).await;
+        if merged > 0 {
+            info!(merged, "sync: merged events from peer");
+        }
+
+        // Return our events since their timestamp
+        let since = req.since_timestamp_ms;
+        let our_events: Vec<proto::Event> = self
+            .event_store
+            .query(&kith_sync::store::EventFilter {
+                since: chrono::DateTime::from_timestamp_millis(since),
+                ..Default::default()
+            })
+            .await
+            .into_iter()
+            .map(|e| proto::Event {
+                event_id: e.id,
+                event_type: e.event_type,
+                origin_host: e.machine,
+                timestamp: None,
+                scope: format!("{:?}", e.scope),
+                metadata_json: e.metadata.to_string(),
+                content_json: e.detail,
+            })
+            .collect();
+
+        Ok(Response::new(proto::ExchangeEventsResponse {
+            their_events: our_events,
+            current_timestamp_ms: chrono::Utc::now().timestamp_millis(),
         }))
     }
 }

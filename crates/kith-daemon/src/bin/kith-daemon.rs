@@ -189,17 +189,117 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_mesh_loop(mesh_config, mn_mesh, es_mesh).await;
     });
 
-    // Task 6: Sync loop (periodic merge with peers)
-    let _es_sync = event_store.clone();
+    // Task 6: Sync loop — exchange events with known peers
+    let es_sync = event_store.clone();
+    let sync_keypair = kith_common::credential::Keypair::generate();
     let sync_task = tokio::spawn(async move {
+        // Peers to sync with: from KITH_SYNC_PEERS env (comma-separated host:port)
+        let peers: Vec<String> = std::env::var("KITH_SYNC_PEERS")
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if peers.is_empty() {
+            info!("sync: no peers configured (set KITH_SYNC_PEERS=host1:port,host2:port)");
+        }
+
+        let mut last_sync_ms: i64 = 0;
+
         loop {
             tokio::time::sleep(Duration::from_secs(30)).await;
-            // Sync is a no-op until peers are connected via real mesh.
-            // When peers are available, this would:
-            //   1. For each connected peer: fetch their events via gRPC
-            //   2. Merge into local store: es_sync.merge(peer_events).await
-            //   3. Send our new events to them
-            // The EventStore.merge() handles dedup by event ID.
+
+            for peer_addr in &peers {
+                let addr = if peer_addr.starts_with("http") {
+                    peer_addr.clone()
+                } else {
+                    format!("http://{peer_addr}")
+                };
+
+                let channel = match tonic::transport::Channel::from_shared(addr.clone()) {
+                    Ok(c) => match c.connect().await {
+                        Ok(ch) => ch,
+                        Err(e) => {
+                            tracing::debug!(peer = %peer_addr, error = %e, "sync: peer unreachable");
+                            continue;
+                        }
+                    },
+                    Err(e) => {
+                        warn!(peer = %peer_addr, error = %e, "sync: invalid peer address");
+                        continue;
+                    }
+                };
+
+                let mut client =
+                    kith_daemon::proto::kith_daemon_client::KithDaemonClient::new(channel);
+
+                // Collect our recent events to send
+                let our_events: Vec<kith_daemon::proto::Event> = es_sync
+                    .query(&kith_sync::store::EventFilter {
+                        since: chrono::DateTime::from_timestamp_millis(last_sync_ms),
+                        limit: Some(100),
+                        ..Default::default()
+                    })
+                    .await
+                    .into_iter()
+                    .map(|e| kith_daemon::proto::Event {
+                        event_id: e.id,
+                        event_type: e.event_type,
+                        origin_host: e.machine,
+                        timestamp: None,
+                        scope: format!("{:?}", e.scope),
+                        metadata_json: e.metadata.to_string(),
+                        content_json: e.detail,
+                    })
+                    .collect();
+
+                // Sign the request
+                let now_ms = chrono::Utc::now().timestamp_millis();
+                let cred = sync_keypair.sign(now_ms, b"exchange_events");
+
+                let request = tonic::Request::new(kith_daemon::proto::ExchangeEventsRequest {
+                    credential: Some(kith_daemon::proto::Credential {
+                        public_key: cred.public_key,
+                        timestamp_unix_ms: cred.timestamp_unix_ms,
+                        signature: cred.signature,
+                    }),
+                    our_events,
+                    since_timestamp_ms: last_sync_ms,
+                });
+
+                match client.exchange_events(request).await {
+                    Ok(response) => {
+                        let resp = response.into_inner();
+                        let their_events: Vec<kith_common::event::Event> = resp
+                            .their_events
+                            .into_iter()
+                            .map(|e| kith_common::event::Event {
+                                id: e.event_id,
+                                machine: e.origin_host,
+                                category: kith_common::event::EventCategory::System,
+                                event_type: e.event_type,
+                                path: None,
+                                detail: e.content_json,
+                                metadata: serde_json::from_str(&e.metadata_json)
+                                    .unwrap_or(serde_json::Value::Null),
+                                scope: kith_common::event::EventScope::Ops,
+                                timestamp: chrono::Utc::now(),
+                            })
+                            .collect();
+
+                        let count = their_events.len();
+                        let merged = es_sync.merge(their_events).await;
+                        if merged > 0 {
+                            info!(peer = %peer_addr, received = count, merged, "sync: events exchanged");
+                        }
+                        last_sync_ms = resp.current_timestamp_ms;
+                    }
+                    Err(e) => {
+                        tracing::debug!(peer = %peer_addr, error = %e, "sync: exchange failed");
+                    }
+                }
+            }
         }
     });
 

@@ -12,6 +12,20 @@ service KithDaemon {
   rpc Rollback(RollbackRequest) returns (RollbackResult);
   rpc Events(EventsRequest) returns (stream Event);
   rpc Capabilities(CapabilitiesRequest) returns (CapabilityReport);
+
+  // Sync: exchange events between peers for CRDT replication
+  rpc ExchangeEvents(ExchangeEventsRequest) returns (ExchangeEventsResponse);
+}
+
+message ExchangeEventsRequest {
+  Credential credential = 1;
+  repeated Event our_events = 2;     // events we have that peer might not
+  int64 since_timestamp_ms = 3;      // only send us events newer than this
+}
+
+message ExchangeEventsResponse {
+  repeated Event their_events = 1;   // events they have that we might not
+  int64 current_timestamp_ms = 2;    // their latest event timestamp
 }
 
 // Ed25519 signed credential (ADR-006). Scope is server-determined.
