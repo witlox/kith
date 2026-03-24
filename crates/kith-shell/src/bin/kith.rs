@@ -6,7 +6,6 @@
 //!   kith --backend anthropic      # override backend
 //!   kith --daemon host:port       # connect to remote daemon
 
-
 use kith_common::credential::Keypair;
 use kith_common::inference::InferenceBackend;
 use kith_shell::agent::{Agent, AgentOutput};

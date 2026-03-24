@@ -49,21 +49,25 @@ impl EventStore {
             .iter()
             .filter(|e| {
                 if let Some(ref since) = filter.since
-                    && e.timestamp < *since {
-                        return false;
-                    }
+                    && e.timestamp < *since
+                {
+                    return false;
+                }
                 if let Some(ref machine) = filter.machine
-                    && e.machine != *machine {
-                        return false;
-                    }
+                    && e.machine != *machine
+                {
+                    return false;
+                }
                 if let Some(ref category) = filter.category
-                    && e.category != *category {
-                        return false;
-                    }
+                    && e.category != *category
+                {
+                    return false;
+                }
                 if let Some(ref event_type) = filter.event_type
-                    && e.event_type != *event_type {
-                        return false;
-                    }
+                    && e.event_type != *event_type
+                {
+                    return false;
+                }
                 if let Some(ref scope) = filter.scope {
                     match scope {
                         EventScope::Ops => {} // ops sees everything

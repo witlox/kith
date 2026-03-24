@@ -2,7 +2,6 @@
 //! Tests that known commands bypass the InferenceBackend entirely.
 //! Uses real process execution to verify the full local path.
 
-
 use kith_shell::classify::{InputClass, InputClassifier};
 use kith_shell::mock_backend::MockInferenceBackend;
 

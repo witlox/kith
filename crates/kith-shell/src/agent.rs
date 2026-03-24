@@ -256,14 +256,15 @@ impl Agent {
 
                 // Also query daemon if connected
                 if let Some(ref mut daemon) = self.daemon
-                    && let Ok(state) = daemon.query().await {
-                        let mut output = results.join("\n");
-                        if !output.is_empty() {
-                            output.push('\n');
-                        }
-                        output.push_str(&format!("[daemon] {}", state));
-                        return output;
+                    && let Ok(state) = daemon.query().await
+                {
+                    let mut output = results.join("\n");
+                    if !output.is_empty() {
+                        output.push('\n');
                     }
+                    output.push_str(&format!("[daemon] {}", state));
+                    return output;
+                }
 
                 if results.is_empty() {
                     format!("no events for query: {query}")

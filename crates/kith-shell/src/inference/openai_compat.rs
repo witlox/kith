@@ -193,68 +193,70 @@ fn parse_openai_sse_stream(
                         }
 
                         if let Ok(chunk) = serde_json::from_str::<OaiStreamChunk>(data)
-                            && let Some(choice) = chunk.choices.first() {
-                                let delta = &choice.delta;
+                            && let Some(choice) = chunk.choices.first()
+                        {
+                            let delta = &choice.delta;
 
-                                // Text content
-                                if let Some(ref content) = delta.content
-                                    && !content.is_empty() {
-                                        return Some((
-                                            Ok(StreamChunk::TextDelta(content.clone())),
-                                            (stream, buf, tool_calls),
-                                        ));
-                                    }
+                            // Text content
+                            if let Some(ref content) = delta.content
+                                && !content.is_empty()
+                            {
+                                return Some((
+                                    Ok(StreamChunk::TextDelta(content.clone())),
+                                    (stream, buf, tool_calls),
+                                ));
+                            }
 
-                                // Reasoning/thinking (some models)
-                                if let Some(ref reasoning) = delta.reasoning_content
-                                    && !reasoning.is_empty() {
-                                        return Some((
-                                            Ok(StreamChunk::ThinkingDelta(reasoning.clone())),
-                                            (stream, buf, tool_calls),
-                                        ));
-                                    }
+                            // Reasoning/thinking (some models)
+                            if let Some(ref reasoning) = delta.reasoning_content
+                                && !reasoning.is_empty()
+                            {
+                                return Some((
+                                    Ok(StreamChunk::ThinkingDelta(reasoning.clone())),
+                                    (stream, buf, tool_calls),
+                                ));
+                            }
 
-                                // Tool calls (accumulated across chunks)
-                                if let Some(ref tcs) = delta.tool_calls {
-                                    for tc in tcs {
-                                        let entry =
-                                            tool_calls.entry(tc.index).or_insert_with(|| {
-                                                PartialToolCall {
-                                                    id: tc.id.clone().unwrap_or_default(),
-                                                    name: String::new(),
-                                                    arguments: String::new(),
-                                                }
-                                            });
-                                        if let Some(ref f) = tc.function {
-                                            if let Some(ref name) = f.name {
-                                                entry.name.clone_from(name);
-                                            }
-                                            if let Some(ref args) = f.arguments {
-                                                entry.arguments.push_str(args);
-                                            }
+                            // Tool calls (accumulated across chunks)
+                            if let Some(ref tcs) = delta.tool_calls {
+                                for tc in tcs {
+                                    let entry = tool_calls.entry(tc.index).or_insert_with(|| {
+                                        PartialToolCall {
+                                            id: tc.id.clone().unwrap_or_default(),
+                                            name: String::new(),
+                                            arguments: String::new(),
                                         }
-                                    }
-                                }
-
-                                // Finish reason
-                                if choice.finish_reason.as_deref() == Some("tool_calls") {
-                                    // Emit accumulated tool calls
-                                    let completed: Vec<_> = tool_calls.drain().collect();
-                                    for (_, tc) in completed {
-                                        if !tc.name.is_empty() {
-                                            return Some((
-                                                Ok(StreamChunk::ToolCall(ToolCall {
-                                                    id: tc.id,
-                                                    name: tc.name,
-                                                    arguments: serde_json::from_str(&tc.arguments)
-                                                        .unwrap_or(serde_json::Value::Null),
-                                                })),
-                                                (stream, buf, tool_calls),
-                                            ));
+                                    });
+                                    if let Some(ref f) = tc.function {
+                                        if let Some(ref name) = f.name {
+                                            entry.name.clone_from(name);
+                                        }
+                                        if let Some(ref args) = f.arguments {
+                                            entry.arguments.push_str(args);
                                         }
                                     }
                                 }
                             }
+
+                            // Finish reason
+                            if choice.finish_reason.as_deref() == Some("tool_calls") {
+                                // Emit accumulated tool calls
+                                let completed: Vec<_> = tool_calls.drain().collect();
+                                for (_, tc) in completed {
+                                    if !tc.name.is_empty() {
+                                        return Some((
+                                            Ok(StreamChunk::ToolCall(ToolCall {
+                                                id: tc.id,
+                                                name: tc.name,
+                                                arguments: serde_json::from_str(&tc.arguments)
+                                                    .unwrap_or(serde_json::Value::Null),
+                                            })),
+                                            (stream, buf, tool_calls),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
                     }
                     continue;
                 }

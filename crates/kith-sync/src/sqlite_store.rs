@@ -242,10 +242,11 @@ impl SqliteEventStore {
             );
 
             if let Ok(changes) = result
-                && changes > 0 {
-                    let _ = self.tx.send(event);
-                    merged += 1;
-                }
+                && changes > 0
+            {
+                let _ = self.tx.send(event);
+                merged += 1;
+            }
         }
 
         merged

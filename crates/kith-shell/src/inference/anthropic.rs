@@ -264,64 +264,54 @@ fn parse_anthropic_sse_stream(
                         "content_block_start" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data)
                                 && let Some(cb) = v.get("content_block")
-                                    && cb.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
-                                        tool_id = cb
-                                            .get("id")
-                                            .and_then(|i| i.as_str())
-                                            .unwrap_or("")
-                                            .into();
-                                        tool_name = cb
-                                            .get("name")
-                                            .and_then(|n| n.as_str())
-                                            .unwrap_or("")
-                                            .into();
-                                        tool_input.clear();
-                                    }
+                                && cb.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+                            {
+                                tool_id =
+                                    cb.get("id").and_then(|i| i.as_str()).unwrap_or("").into();
+                                tool_name =
+                                    cb.get("name").and_then(|n| n.as_str()).unwrap_or("").into();
+                                tool_input.clear();
+                            }
                         }
                         "content_block_delta" => {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data)
-                                && let Some(delta) = v.get("delta") {
-                                    let delta_type =
-                                        delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                                    match delta_type {
-                                        "text_delta" => {
-                                            if let Some(text) =
-                                                delta.get("text").and_then(|t| t.as_str())
-                                                && !text.is_empty() {
-                                                    return Some((
-                                                        Ok(StreamChunk::TextDelta(text.into())),
-                                                        (
-                                                            stream, buf, tool_id, tool_name,
-                                                            tool_input,
-                                                        ),
-                                                    ));
-                                                }
+                                && let Some(delta) = v.get("delta")
+                            {
+                                let delta_type =
+                                    delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                                match delta_type {
+                                    "text_delta" => {
+                                        if let Some(text) =
+                                            delta.get("text").and_then(|t| t.as_str())
+                                            && !text.is_empty()
+                                        {
+                                            return Some((
+                                                Ok(StreamChunk::TextDelta(text.into())),
+                                                (stream, buf, tool_id, tool_name, tool_input),
+                                            ));
                                         }
-                                        "thinking_delta" => {
-                                            if let Some(thinking) =
-                                                delta.get("thinking").and_then(|t| t.as_str())
-                                                && !thinking.is_empty() {
-                                                    return Some((
-                                                        Ok(StreamChunk::ThinkingDelta(
-                                                            thinking.into(),
-                                                        )),
-                                                        (
-                                                            stream, buf, tool_id, tool_name,
-                                                            tool_input,
-                                                        ),
-                                                    ));
-                                                }
-                                        }
-                                        "input_json_delta" => {
-                                            if let Some(partial) =
-                                                delta.get("partial_json").and_then(|p| p.as_str())
-                                            {
-                                                tool_input.push_str(partial);
-                                            }
-                                        }
-                                        _ => {}
                                     }
+                                    "thinking_delta" => {
+                                        if let Some(thinking) =
+                                            delta.get("thinking").and_then(|t| t.as_str())
+                                            && !thinking.is_empty()
+                                        {
+                                            return Some((
+                                                Ok(StreamChunk::ThinkingDelta(thinking.into())),
+                                                (stream, buf, tool_id, tool_name, tool_input),
+                                            ));
+                                        }
+                                    }
+                                    "input_json_delta" => {
+                                        if let Some(partial) =
+                                            delta.get("partial_json").and_then(|p| p.as_str())
+                                        {
+                                            tool_input.push_str(partial);
+                                        }
+                                    }
+                                    _ => {}
                                 }
+                            }
                         }
                         "content_block_stop" => {
                             if !tool_name.is_empty() {
