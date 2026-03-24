@@ -90,12 +90,48 @@ Everything else — file ops, git, builds, tests, processes — is standard Unix
 ## Quick Start
 
 ```bash
-kith-daemon --config config/daemon.toml   # on each machine
-kith shell                                 # your terminal
+# Build
+cargo build --release -p kith-shell --bin kith
+cargo build --release -p kith-daemon --bin kith-daemon
 
-you> what's the state of things?
-you> look at repo fastapi-service and deploy on staging-1
-you> run: docker ps                        # escape hatch
+# Initialize (generates keypair + default config)
+./target/release/kith --init
+
+# Start daemon on each machine
+RUST_LOG=info ./target/release/kith-daemon
+
+# Start shell (interactive)
+./target/release/kith
+
+# Or with a specific backend
+ANTHROPIC_API_KEY=sk-... ./target/release/kith --backend anthropic
+
+# Or single command
+./target/release/kith "echo hello"
+```
+
+Interactive usage:
+```
+kith> ls -la                              # pass-through (bash via PTY)
+kith> what's the state of things?         # intent (routed to LLM)
+kith> run: docker ps                      # escape hatch (forced bash)
+kith> exit
+```
+
+Configuration: `~/.config/kith/config.toml`
+```toml
+[inference]
+backend = "openai-compatible"
+endpoint = "http://gpu-server:8000/v1"
+model = "qwen3-coder"
+# api_key_env = "OPENAI_API_KEY"
+
+[mesh]
+identifier = "my-mesh-2026"
+wireguard_interface = "kith0"
+listen_port = 51820
+mesh_cidr = "kith-mesh"
+nostr_relays = ["wss://relay.damus.io"]
 ```
 
 ## Related Projects

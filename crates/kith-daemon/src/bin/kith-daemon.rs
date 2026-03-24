@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use kith_common::event::{Event, EventCategory, EventScope};
-use kith_common::policy::{MachinePolicy, Scope};
+use kith_common::policy::Scope;
 use kith_daemon::audit::AuditLog;
 use kith_daemon::commit::CommitWindowManager;
 use kith_daemon::drift::{DriftEvaluator, ObserverEvent};
@@ -35,11 +35,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("warning: config load failed: {e}");
         None
     });
-    let _cfg_daemon = config.as_ref().and_then(|c| c.daemon.as_ref());
+    let cfg_daemon = config.as_ref().and_then(|c| c.daemon.as_ref());
+    let _cfg_mesh = config.as_ref().map(|c| &c.mesh); // Used in Phase 2 (real mesh)
 
-    // --- Config: env vars override config file ---
+    // --- Config: env vars > config file > defaults ---
     let listen_addr: SocketAddr = std::env::var("KITH_LISTEN_ADDR")
-        .unwrap_or_else(|_| "0.0.0.0:9443".into())
+        .ok()
+        .or_else(|| cfg_daemon.map(|d| d.listen_addr.to_string()))
+        .unwrap_or_else(|| "0.0.0.0:9443".into())
         .parse()?;
 
     let machine_name = std::env::var("KITH_MACHINE_NAME").unwrap_or_else(|_| {
@@ -49,24 +52,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let commit_window_secs: u64 = std::env::var("KITH_COMMIT_WINDOW_SECS")
-        .unwrap_or_else(|_| "600".into())
+        .ok()
+        .or_else(|| cfg_daemon.map(|d| d.policy.commit_window_seconds.to_string()))
+        .unwrap_or_else(|| "600".into())
         .parse()
         .unwrap_or(600);
 
     let tofu: bool = std::env::var("KITH_TOFU")
-        .unwrap_or_else(|_| "false".into())
+        .ok()
+        .unwrap_or_else(|| {
+            cfg_daemon
+                .map(|d| d.policy.tofu.to_string())
+                .unwrap_or_else(|| "false".into())
+        })
         .parse()
         .unwrap_or(false);
 
-    // Watch paths for drift (comma-separated)
+    // Watch paths: env > config blacklist paths > default
     let watch_paths: Vec<PathBuf> = std::env::var("KITH_WATCH_PATHS")
-        .unwrap_or_else(|_| "/etc".into())
-        .split(',')
-        .map(|s| PathBuf::from(s.trim()))
-        .collect();
+        .ok()
+        .map(|s| s.split(',').map(|p| PathBuf::from(p.trim())).collect())
+        .unwrap_or_else(|| vec![PathBuf::from("/etc")]);
 
-    // --- Build policy ---
-    let mut policy = MachinePolicy::default();
+    let data_dir = cfg_daemon.map(|d| d.data_dir.clone()).unwrap_or_else(|| {
+        dirs_next::data_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("kith")
+    });
+    std::fs::create_dir_all(&data_dir).ok();
+
+    // --- Build policy: config file > defaults ---
+    let mut policy = cfg_daemon.map(|d| d.policy.clone()).unwrap_or_default();
     policy.tofu = tofu;
 
     if let Ok(users_str) = std::env::var("KITH_USERS") {
