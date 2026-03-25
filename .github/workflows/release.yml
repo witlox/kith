@@ -43,30 +43,38 @@ jobs:
   build:
     name: Build (${{ matrix.name }})
     needs: preflight
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # --- x86_64 ---
-          - name: x86_64
+          # --- Linux ---
+          - name: linux-x86_64
+            runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            features: ""
+            daemon_features: real-mesh
             cross: false
-          - name: x86_64-full
-            target: x86_64-unknown-linux-gnu
-            features: nostr,wireguard
-            cross: false
+            shell_only: false
+          - name: linux-aarch64
+            runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            daemon_features: real-mesh
+            cross: true
+            shell_only: false
 
-          # --- aarch64 ---
-          - name: aarch64
-            target: aarch64-unknown-linux-gnu
-            features: ""
-            cross: true
-          - name: aarch64-full
-            target: aarch64-unknown-linux-gnu
-            features: nostr,wireguard
-            cross: true
+          # --- macOS (agent-only: shell + connect to mesh) ---
+          - name: macos-arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            daemon_features: ""
+            cross: false
+            shell_only: true
+          - name: macos-x86_64
+            runner: macos-latest
+            target: x86_64-apple-darwin
+            daemon_features: ""
+            cross: false
+            shell_only: true
 
     steps:
       - uses: actions/checkout@v4
@@ -78,11 +86,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: build-${{ matrix.name }}
-      - name: Install protoc
+      - name: Install protoc (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get install -y protobuf-compiler
 
-      - name: Install native build deps
-        if: ${{ !matrix.cross }}
+      - name: Install protoc (macOS)
+        if: runner.os == 'macOS'
+        run: brew install protobuf
+
+      - name: Install native build deps (Linux)
+        if: runner.os == 'Linux' && !matrix.cross
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
 
       - name: Install cross-compilation toolchain (aarch64)
@@ -118,26 +131,23 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }} -p kith-shell --bin kith
 
       - name: Build kith-daemon
+        if: ${{ !matrix.shell_only }}
         run: >
           cargo build --release --target ${{ matrix.target }}
           -p kith-daemon --bin kith-daemon
-          ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
-
-      - name: Build kith-mesh (features)
-        if: matrix.features != ''
-        run: >
-          cargo build --release --target ${{ matrix.target }}
-          -p kith-mesh --features ${{ matrix.features }}
+          ${{ matrix.daemon_features != '' && format('--features {0}', matrix.daemon_features) || '' }}
 
       - name: Package
         run: |
           mkdir -p dist
           cp "target/${{ matrix.target }}/release/kith" dist/
-          cp "target/${{ matrix.target }}/release/kith-daemon" dist/
+          if [ "${{ matrix.shell_only }}" != "true" ]; then
+            cp "target/${{ matrix.target }}/release/kith-daemon" dist/
+          fi
           cd dist
           tar czf "../kith-${{ matrix.name }}.tar.gz" *
           cd ..
-          sha256sum "kith-${{ matrix.name }}.tar.gz" > "kith-${{ matrix.name }}.tar.gz.sha256"
+          shasum -a 256 "kith-${{ matrix.name }}.tar.gz" > "kith-${{ matrix.name }}.tar.gz.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -166,16 +176,19 @@ jobs:
           name: kith v${{ needs.preflight.outputs.version }}
           generate_release_notes: true
           body: |
-            ## Binaries
+            ## Linux (shell + daemon with Nostr + WireGuard)
 
-            Each archive contains `kith` (shell) and `kith-daemon`.
+            | Archive | Arch |
+            |---------|------|
+            | `kith-linux-x86_64` | x86_64 |
+            | `kith-linux-aarch64` | aarch64 |
 
-            | Archive | Arch | Features |
-            |---------|------|----------|
-            | `kith-x86_64` | x86_64 | Core |
-            | `kith-x86_64-full` | x86_64 | Core + Nostr signaling + WireGuard mesh |
-            | `kith-aarch64` | aarch64 | Core |
-            | `kith-aarch64-full` | aarch64 | Core + Nostr signaling + WireGuard mesh |
+            ## macOS (shell only — connects to mesh daemons via gRPC)
+
+            | Archive | Arch |
+            |---------|------|
+            | `kith-macos-arm64` | Apple Silicon |
+            | `kith-macos-x86_64` | Intel |
 
             ## Docker
 
