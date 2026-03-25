@@ -11,7 +11,7 @@ use crate::context::ConversationContext;
 use crate::daemon_client::DaemonClient;
 use crate::tools;
 
-use kith_common::event::{Event, EventScope};
+use kith_common::event::{Event, EventCategory, EventScope};
 use kith_state::embedding::{BagOfWordsEmbedder, EmbeddingBackend};
 use kith_state::hybrid::HybridRetriever;
 use kith_state::retrieval::KeywordRetriever;
@@ -102,10 +102,50 @@ impl Agent {
         &self.event_store
     }
 
+    /// Whether an event category is worth embedding into the vector index.
+    /// Operational events (Exec, Drift, Apply, Commit, Rollback) are valuable
+    /// for semantic retrieval. Infrastructure noise (System, Mesh, Capability) is not.
+    pub fn should_embed(category: &EventCategory) -> bool {
+        matches!(
+            category,
+            EventCategory::Exec
+                | EventCategory::Drift
+                | EventCategory::Apply
+                | EventCategory::Commit
+                | EventCategory::Rollback
+        )
+    }
+
     /// Index an event into the vector index for hybrid retrieval.
+    /// Only embeds operational events (see `should_embed`).
     pub async fn index_event(&mut self, event: &Event) {
+        if !Self::should_embed(&event.category) {
+            return;
+        }
         if let Ok(emb) = self.embedder.embed(&event.detail).await {
             self.hybrid_retriever.index_mut().insert(event.clone(), emb);
+        }
+    }
+
+    /// Sync events from daemon into local store and index operational ones.
+    /// Called before retrieve/fleet_query to ensure fresh data.
+    async fn sync_from_daemon(&mut self) {
+        if let Some(ref mut daemon) = self.daemon {
+            match daemon.fetch_events().await {
+                Ok(events) => {
+                    for event in &events {
+                        if Self::should_embed(&event.category)
+                            && let Ok(emb) = self.embedder.embed(&event.detail).await
+                        {
+                            self.hybrid_retriever.index_mut().insert(event.clone(), emb);
+                        }
+                    }
+                    let _merged = self.event_store.merge(events).await;
+                }
+                Err(e) => {
+                    warn!("failed to sync events from daemon: {e}");
+                }
+            }
         }
     }
 
@@ -253,6 +293,9 @@ impl Agent {
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
 
+                // Sync from daemon before querying
+                self.sync_from_daemon().await;
+
                 // Query local event store with keyword matching (FS-06)
                 let all = self.event_store.all().await;
                 let results = if query.is_empty() {
@@ -311,6 +354,10 @@ impl Agent {
                     .get("query")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
+
+                // Sync from daemon before retrieval
+                self.sync_from_daemon().await;
+
                 let all = self.event_store.all().await;
 
                 // Use hybrid retrieval (keyword + vector) when possible
@@ -363,9 +410,31 @@ impl Agent {
                     .get("command")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
+                let paths: Vec<String> = tc
+                    .arguments
+                    .get("paths")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
                 if let Some(ref mut daemon) = self.daemon {
                     match daemon.apply(command, 600).await {
-                        Ok(id) => format!("applied on {host}, pending_id: {id}"),
+                        Ok(id) => {
+                            if paths.is_empty() {
+                                format!(
+                                    "applied on {host}, pending_id: {id} (audit-only, no paths backed up)"
+                                )
+                            } else {
+                                format!(
+                                    "applied on {host}, pending_id: {id} (backed up: {})",
+                                    paths.join(", ")
+                                )
+                            }
+                        }
                         Err(e) => format!("error: {e}"),
                     }
                 } else {
@@ -457,6 +526,7 @@ impl Agent {
 mod tests {
     use super::*;
     use crate::mock_backend::MockInferenceBackend;
+    use kith_common::event::{Event, EventCategory};
 
     fn make_agent(backend: MockInferenceBackend) -> Agent {
         Agent::new(Box::new(backend), "you are a test agent".into())
@@ -560,5 +630,97 @@ mod tests {
             output,
             AgentOutput::PassThrough { exit_code: 0, .. }
         ));
+    }
+
+    #[test]
+    fn should_embed_operational_events() {
+        assert!(Agent::should_embed(&EventCategory::Exec));
+        assert!(Agent::should_embed(&EventCategory::Drift));
+        assert!(Agent::should_embed(&EventCategory::Apply));
+        assert!(Agent::should_embed(&EventCategory::Commit));
+        assert!(Agent::should_embed(&EventCategory::Rollback));
+    }
+
+    #[test]
+    fn should_not_embed_infrastructure_events() {
+        assert!(!Agent::should_embed(&EventCategory::System));
+        assert!(!Agent::should_embed(&EventCategory::Mesh));
+        assert!(!Agent::should_embed(&EventCategory::Capability));
+        assert!(!Agent::should_embed(&EventCategory::Policy));
+    }
+
+    #[tokio::test]
+    async fn index_event_skips_system_events() {
+        let backend = MockInferenceBackend::new("test");
+        let mut agent = make_agent(backend);
+
+        let system_event = Event::new("m", EventCategory::System, "system.boot", "booted");
+        agent.index_event(&system_event).await;
+
+        // Vector index should be empty — system event was skipped
+        assert_eq!(agent.hybrid_retriever.index_mut().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn index_event_embeds_exec_events() {
+        let backend = MockInferenceBackend::new("test");
+        let mut agent = make_agent(backend);
+
+        let exec_event = Event::new("m", EventCategory::Exec, "exec.command", "docker ps");
+        agent.index_event(&exec_event).await;
+
+        // Vector index should have one entry
+        assert_eq!(agent.hybrid_retriever.index_mut().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn apply_tool_with_paths() {
+        let backend = MockInferenceBackend::new("test");
+        backend.queue_tool_call(
+            "apply",
+            serde_json::json!({
+                "host": "local",
+                "command": "echo test",
+                "paths": ["/etc/nginx/conf.d", "/var/www"]
+            }),
+        );
+        let mut agent = make_agent(backend);
+
+        // Without daemon, apply returns "no daemon connected"
+        let output = agent
+            .process("please deploy the nginx config changes")
+            .await;
+        match output {
+            AgentOutput::ToolResults(results) => {
+                assert_eq!(results[0].tool_name, "apply");
+                assert!(results[0].output.contains("no daemon connected"));
+            }
+            other => panic!("expected ToolResults, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn apply_tool_without_paths_is_audit_only() {
+        let backend = MockInferenceBackend::new("test");
+        backend.queue_tool_call(
+            "apply",
+            serde_json::json!({
+                "host": "local",
+                "command": "echo test"
+            }),
+        );
+        let mut agent = make_agent(backend);
+
+        let output = agent
+            .process("please deploy the nginx config changes now")
+            .await;
+        match output {
+            AgentOutput::ToolResults(results) => {
+                assert_eq!(results[0].tool_name, "apply");
+                // No daemon = "no daemon connected" — but the paths parsing was exercised
+                assert!(results[0].output.contains("no daemon connected"));
+            }
+            other => panic!("expected ToolResults, got {other:?}"),
+        }
     }
 }

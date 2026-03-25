@@ -42,12 +42,17 @@ pub fn native_tools() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "apply".into(),
-            description: "Make a change with commit window semantics".into(),
+            description: "Make a change with commit window semantics. Optionally specify paths to back up before applying.".into(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "host": { "type": "string", "description": "Target machine" },
-                    "command": { "type": "string", "description": "Change to apply" }
+                    "command": { "type": "string", "description": "Change to apply" },
+                    "paths": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "File/directory paths to back up before applying (for rollback). If omitted, change is audit-only."
+                    }
                 },
                 "required": ["host", "command"]
             }),

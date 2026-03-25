@@ -180,6 +180,74 @@ impl DaemonClient {
         Ok(response.into_inner().json_payload)
     }
 
+    /// Fetch recent events from the daemon (for sync into local store).
+    pub async fn fetch_events(&mut self) -> Result<Vec<kith_common::event::Event>, KithError> {
+        let cred = self.make_credential(b"events");
+
+        let request = tonic::Request::new(proto::EventsRequest {
+            credential: Some(cred),
+            since: None,
+            event_types: vec![],
+        });
+
+        let response = self
+            .client
+            .events(request)
+            .await
+            .map_err(|s| KithError::Internal(format!("events failed: {s}")))?;
+
+        let mut stream = response.into_inner();
+        let mut events = Vec::new();
+
+        while let Some(item) = tokio_stream::StreamExt::next(&mut stream).await {
+            let proto_event =
+                item.map_err(|s| KithError::Internal(format!("events stream error: {s}")))?;
+
+            // Convert proto Event to domain Event
+            let category = match proto_event.event_type.split('.').next().unwrap_or("") {
+                "drift" => kith_common::event::EventCategory::Drift,
+                "exec" => kith_common::event::EventCategory::Exec,
+                "apply" => kith_common::event::EventCategory::Apply,
+                "commit" => kith_common::event::EventCategory::Commit,
+                "rollback" => kith_common::event::EventCategory::Rollback,
+                "policy" => kith_common::event::EventCategory::Policy,
+                "mesh" => kith_common::event::EventCategory::Mesh,
+                "capability" => kith_common::event::EventCategory::Capability,
+                _ => kith_common::event::EventCategory::System,
+            };
+
+            let scope = if proto_event.scope == "Public" {
+                kith_common::event::EventScope::Public
+            } else {
+                kith_common::event::EventScope::Ops
+            };
+
+            let event = kith_common::event::Event {
+                id: proto_event.event_id,
+                machine: proto_event.origin_host,
+                category,
+                event_type: proto_event.event_type,
+                path: None,
+                detail: proto_event.content_json,
+                metadata: serde_json::from_str(&proto_event.metadata_json)
+                    .unwrap_or(serde_json::Value::Null),
+                scope,
+                timestamp: proto_event
+                    .timestamp
+                    .map(|ts| {
+                        chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32)
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_else(chrono::Utc::now),
+            };
+
+            events.push(event);
+        }
+
+        info!(host = %self.host, count = events.len(), "fetched events from daemon");
+        Ok(events)
+    }
+
     pub fn host(&self) -> &str {
         &self.host
     }
