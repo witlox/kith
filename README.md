@@ -1,12 +1,14 @@
-# Kith
+<p align="center">
+  <img src="logo.png" alt="kith" width="600">
+</p>
 
-[![CI](https://github.com/witlox/kith/actions/workflows/ci.yml/badge.svg)](https://github.com/witlox/kith/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/witlox/kith/graph/badge.svg)](https://codecov.io/gh/witlox/kith)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-2024_edition-orange.svg)](https://doc.rust-lang.org/edition-guide/rust-2024/)
-[![Docs](https://img.shields.io/badge/docs-mdbook-blue.svg)](https://witlox.github.io/kith/)
-
----
+<p align="center">
+  <a href="https://github.com/witlox/kith/actions/workflows/ci.yml"><img src="https://github.com/witlox/kith/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/witlox/kith"><img src="https://codecov.io/gh/witlox/kith/graph/badge.svg" alt="codecov"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"></a>
+  <a href="https://doc.rust-lang.org/edition-guide/rust-2024/"><img src="https://img.shields.io/badge/rust-2024_edition-orange.svg" alt="Rust"></a>
+  <a href="https://witlox.github.io/kith/"><img src="https://img.shields.io/badge/docs-mdbook-blue.svg" alt="Docs"></a>
+</p>
 
 An intent-driven distributed shell: a reasoning layer (LLM) over a mesh of machines. Kith replaces the traditional terminal workflow with an agent that operates across machines — executing locally or remotely, maintaining persistent operational context, and enforcing policy-scoped containment on every action.
 
