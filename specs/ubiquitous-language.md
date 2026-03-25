@@ -18,7 +18,9 @@ Each term has exactly one meaning. No synonyms.
 | **pending change** | A state change applied but not yet committed. |
 | **drift** | Measured difference between expected and actual state. |
 | **capability report** | Structured data describing what a machine can do. |
-| **tool registry** | Local index of available tools, discovered dynamically. |
+| **tool registry** | Local index of available tools, discovered by scanning PATH. Contains name, path, category, and optional version. |
+| **tool category** | Functional grouping for a discovered tool: vcs, container, language, build, server, database, editor, network, monitoring, other. |
+| **tool scan** | The process of walking PATH directories to discover available executables and their versions. |
 | **manifest** | Merged view of all mesh members' capabilities and state summaries. |
 | **ingest** | Capturing operational events for indexing. |
 | **retrieval** | Querying the vector index for relevant context. |

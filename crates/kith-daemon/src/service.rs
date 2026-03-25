@@ -27,20 +27,19 @@ struct SysInfo {
 }
 
 fn sysinfo() -> SysInfo {
-    // Discover common tools in PATH
-    let tools: Vec<String> = [
-        "docker", "git", "python3", "node", "cargo", "kubectl", "nginx",
-    ]
-    .iter()
-    .filter(|cmd| {
-        std::process::Command::new("which")
-            .arg(cmd)
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    })
-    .map(|s| s.to_string())
-    .collect();
+    // Real PATH scan via ToolRegistry
+    let registry = kith_common::tool_registry::ToolRegistry::scan();
+    let tools: Vec<String> = registry
+        .to_capability_tools()
+        .into_iter()
+        .map(|(name, cat, ver)| {
+            if let Some(v) = ver {
+                format!("{name} ({cat}, {v})")
+            } else {
+                format!("{name} ({cat})")
+            }
+        })
+        .collect();
 
     // Check running services (basic: ps-based)
     let services: Vec<String> = std::process::Command::new("ps")

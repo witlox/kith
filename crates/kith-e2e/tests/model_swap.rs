@@ -87,7 +87,7 @@ async fn e2e_model_swap_same_workflow() {
         arguments: serde_json::json!({"host": "staging-1", "command": "docker ps"}),
     }));
 
-    let prompt = build_system_prompt("dev-mac", "Darwin", "staging-1: ok", None);
+    let prompt = build_system_prompt("dev-mac", "Darwin", "staging-1: ok", None, None);
 
     // Run same workflow with backend A
     let mut ctx_a = ConversationContext::new(100);

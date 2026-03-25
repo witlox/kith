@@ -5,4 +5,5 @@ pub mod error;
 pub mod event;
 pub mod inference;
 pub mod policy;
+pub mod tool_registry;
 pub mod types;

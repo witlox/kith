@@ -36,7 +36,10 @@ Difference between expected and actual state on a machine. Detected by kith-daem
 Structured description of what a machine can do. Published by each kith-daemon, synced via CRDT.
 
 ### Tool Registry
-Local index of available Unix tools, discovered from PATH, project config, and capability reports.
+Local index of available Unix tools, discovered by scanning PATH directories at shell startup and on-demand rescan. Each tool entry includes: name, absolute path, category (vcs, container, language, build, server, other), and optional version string. The registry serves two purposes: (1) input classification (pass-through if first token matches a known tool) and (2) system prompt enrichment (the LLM knows what tools are available without guessing). The daemon maintains its own tool registry for capability reports, re-scanned periodically.
+
+### Tool Category
+A functional grouping for discovered tools. Categories: vcs, container, language, build, server, database, editor, network, monitoring, other. Assigned by matching tool names against a known-tools table. Unknown tools are categorized as "other".
 
 ### Native Tool
 A tool in kith shell's own API: remote(), fleet_query(), retrieve(), apply(), commit(), rollback(), todo(). Everything else is standard Unix via PTY.

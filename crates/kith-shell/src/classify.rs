@@ -40,6 +40,11 @@ impl InputClassifier {
         Self::new(commands)
     }
 
+    /// Consume the classifier and return the known commands set.
+    pub fn into_known_commands(self) -> HashSet<String> {
+        self.known_commands
+    }
+
     /// Classify user input.
     pub fn classify(&self, input: &str) -> InputClass {
         let trimmed = input.trim();

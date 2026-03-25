@@ -88,7 +88,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|h| h.to_string_lossy().into_owned())
         .unwrap_or_else(|_| "unknown".into());
     let os_info = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
-    let prompt = build_system_prompt(&hostname, &os_info, "", None);
+    // Scan PATH for available tools
+    let tool_registry = kith_common::tool_registry::ToolRegistry::scan();
+    let tool_summary = tool_registry.prompt_summary();
+    let prompt = build_system_prompt(&hostname, &os_info, "", None, Some(&tool_summary));
 
     // Build embedding backend from config
     let embedder: Box<dyn kith_state::embedding::EmbeddingBackend> =
@@ -110,7 +113,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => Box::new(kith_state::embedding::BagOfWordsEmbedder::new(1000)),
         };
 
-    let mut agent = Agent::with_embedder(backend, prompt, embedder);
+    let mut agent =
+        Agent::with_embedder_and_tools(backend, prompt, embedder, tool_registry.names());
 
     // Connect to daemon if specified
     if let Some(ref addr) = daemon_addr {

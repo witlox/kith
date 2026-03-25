@@ -7,12 +7,13 @@ pub fn build_system_prompt(
     os_info: &str,
     fleet_summary: &str,
     project_context: Option<&str>,
+    available_tools: Option<&str>,
 ) -> String {
     let mut prompt = format!(
         "You are a shell agent. You operate on a mesh of machines.\n\
         \n\
         Local operations: use standard Unix commands. You are on {hostname}, \
-        running {os_info}. Available tools in your PATH are discoverable.\n\
+        running {os_info}.\n\
         \n\
         Remote operations: use remote(host, command) to execute on other \
         machines. Use fleet_query() to check machine state without executing. \
@@ -27,6 +28,12 @@ pub fn build_system_prompt(
         need background on what happened previously. The history spans all \
         machines in the mesh.\n"
     );
+
+    if let Some(tools) = available_tools
+        && !tools.is_empty()
+    {
+        prompt.push_str(&format!("\nAvailable tools:\n{tools}\n"));
+    }
 
     if !fleet_summary.is_empty() {
         prompt.push_str(&format!("\nFleet state:\n{fleet_summary}\n"));
@@ -52,19 +59,25 @@ mod tests {
 
     #[test]
     fn prompt_contains_hostname() {
-        let p = build_system_prompt("dev-mac", "Darwin 25.3.0", "", None);
+        let p = build_system_prompt("dev-mac", "Darwin 25.3.0", "", None, None);
         assert!(p.contains("dev-mac"));
     }
 
     #[test]
     fn prompt_contains_os_info() {
-        let p = build_system_prompt("dev-mac", "Darwin 25.3.0", "", None);
+        let p = build_system_prompt("dev-mac", "Darwin 25.3.0", "", None, None);
         assert!(p.contains("Darwin 25.3.0"));
     }
 
     #[test]
     fn prompt_includes_fleet_summary() {
-        let p = build_system_prompt("dev-mac", "Darwin", "staging-1: healthy, 12GB free", None);
+        let p = build_system_prompt(
+            "dev-mac",
+            "Darwin",
+            "staging-1: healthy, 12GB free",
+            None,
+            None,
+        );
         assert!(p.contains("staging-1: healthy"));
     }
 
@@ -75,13 +88,14 @@ mod tests {
             "Darwin",
             "",
             Some("FastAPI service, Docker deploy"),
+            None,
         );
         assert!(p.contains("FastAPI service"));
     }
 
     #[test]
     fn prompt_omits_fleet_when_empty() {
-        let p = build_system_prompt("dev-mac", "Darwin", "", None);
+        let p = build_system_prompt("dev-mac", "Darwin", "", None, None);
         assert!(!p.contains("Fleet state:"));
     }
 
@@ -92,6 +106,7 @@ mod tests {
             "Darwin 25.3.0",
             "staging-1: ok",
             Some("project ctx"),
+            Some("vcs: git (2.45.0)\ncontainer: docker (27.1.1)"),
         );
         // Should be well under 2K tokens (~500 words max)
         assert!(
@@ -103,7 +118,7 @@ mod tests {
 
     #[test]
     fn prompt_instructs_unix_usage() {
-        let p = build_system_prompt("dev-mac", "Darwin", "", None);
+        let p = build_system_prompt("dev-mac", "Darwin", "", None, None);
         assert!(p.contains("Unix tools directly"));
         assert!(p.contains("remote(host, command)"));
         assert!(p.contains("retrieve(query)"));
@@ -111,7 +126,22 @@ mod tests {
 
     #[test]
     fn prompt_mentions_commit_rollback() {
-        let p = build_system_prompt("dev-mac", "Darwin", "", None);
+        let p = build_system_prompt("dev-mac", "Darwin", "", None, None);
         assert!(p.contains("commit or rollback"));
+    }
+
+    #[test]
+    fn prompt_includes_available_tools() {
+        let tools = "vcs: git (2.45.0)\ncontainer: docker (27.1.1), kubectl";
+        let p = build_system_prompt("dev-mac", "Darwin", "", None, Some(tools));
+        assert!(p.contains("Available tools:"));
+        assert!(p.contains("git (2.45.0)"));
+        assert!(p.contains("docker (27.1.1)"));
+    }
+
+    #[test]
+    fn prompt_omits_tools_when_none() {
+        let p = build_system_prompt("dev-mac", "Darwin", "", None, None);
+        assert!(!p.contains("Available tools:"));
     }
 }

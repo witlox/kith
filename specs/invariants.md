@@ -34,6 +34,10 @@
 
 **INV-OPS-5: Model-agnostic operation.** No component outside kith-shell's InferenceBackend implementations contains model-specific logic. Swapping models is a config change.
 
+**INV-OPS-6: Tool visibility.** The LLM's system prompt includes a categorized summary of available tools. The agent never guesses tool availability — it checks the tool registry.
+
+**INV-OPS-7: Capability freshness.** Daemon capability reports are re-scanned at configurable intervals. Reports include a timestamp so consumers can reason about staleness.
+
 ## Data
 
 **INV-DAT-1: Events are append-only.** Add-wins OR-Set semantics. No modification.

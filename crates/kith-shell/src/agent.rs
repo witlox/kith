@@ -76,13 +76,27 @@ impl Agent {
         system_prompt: String,
         embedder: Box<dyn EmbeddingBackend>,
     ) -> Self {
+        Self::with_embedder_and_tools(
+            backend,
+            system_prompt,
+            embedder,
+            InputClassifier::from_path_env().into_known_commands(),
+        )
+    }
+
+    pub fn with_embedder_and_tools(
+        backend: Box<dyn InferenceBackend>,
+        system_prompt: String,
+        embedder: Box<dyn EmbeddingBackend>,
+        known_commands: std::collections::HashSet<String>,
+    ) -> Self {
         let mut context = ConversationContext::new(50);
         context.set_system_prompt(system_prompt);
 
         let hybrid_retriever = HybridRetriever::new(VectorIndex::new());
 
         Self {
-            classifier: InputClassifier::from_path_env(),
+            classifier: InputClassifier::new(known_commands),
             context,
             backend,
             daemon: None,
