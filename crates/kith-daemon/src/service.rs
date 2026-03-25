@@ -127,12 +127,60 @@ fn get_disk_info(path: &str) -> (u64, u64) {
     (0, 0)
 }
 
+/// Maximum number of concurrent command executions.
+const MAX_CONCURRENT_EXEC: usize = 16;
+
+/// Replay protection: tracks recently seen credential signatures.
+struct ReplayGuard {
+    seen: std::collections::HashSet<[u8; 64]>,
+    timestamps: Vec<(i64, [u8; 64])>,
+}
+
+impl ReplayGuard {
+    fn new() -> Self {
+        Self {
+            seen: std::collections::HashSet::new(),
+            timestamps: Vec::new(),
+        }
+    }
+
+    /// Check if signature was already seen. If not, record it.
+    /// Evicts entries older than 60 seconds.
+    fn check_and_record(&mut self, signature: &[u8], timestamp_ms: i64) -> bool {
+        let sig: [u8; 64] = match signature.try_into() {
+            Ok(s) => s,
+            Err(_) => return false, // malformed, will fail signature check anyway
+        };
+
+        // Evict old entries
+        let cutoff = timestamp_ms - 60_000;
+        self.timestamps.retain(|(ts, s)| {
+            if *ts < cutoff {
+                self.seen.remove(s);
+                false
+            } else {
+                true
+            }
+        });
+
+        if self.seen.contains(&sig) {
+            return false; // replay
+        }
+
+        self.seen.insert(sig);
+        self.timestamps.push((timestamp_ms, sig));
+        true
+    }
+}
+
 pub struct KithDaemonService {
     policy: Arc<PolicyEvaluator>,
     audit: Arc<Mutex<AuditLog>>,
     commit_mgr: Arc<Mutex<CommitWindowManager>>,
     tx_mgr: Arc<Mutex<crate::containment::TransactionManager>>,
     event_store: Arc<kith_sync::store::EventStore>,
+    exec_semaphore: Arc<tokio::sync::Semaphore>,
+    replay_guard: Arc<Mutex<ReplayGuard>>,
     machine_name: String,
 }
 
@@ -152,6 +200,8 @@ impl KithDaemonService {
                 backup_dir,
             ))),
             event_store: Arc::new(kith_sync::store::EventStore::new()),
+            exec_semaphore: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_EXEC)),
+            replay_guard: Arc::new(Mutex::new(ReplayGuard::new())),
             machine_name,
         }
     }
@@ -173,6 +223,8 @@ impl KithDaemonService {
                 backup_dir,
             ))),
             event_store,
+            exec_semaphore: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_EXEC)),
+            replay_guard: Arc::new(Mutex::new(ReplayGuard::new())),
             machine_name,
         }
     }
@@ -194,13 +246,32 @@ impl KithDaemonService {
     }
 
     /// Authenticate + authorize, returning the pubkey hex on success.
-    fn auth(
+    async fn auth(
         &self,
         cred: Option<&proto::Credential>,
         request_context: &[u8],
         action: &ActionCategory,
     ) -> Result<String, Status> {
+        let (user, _scope) = self.auth_with_scope(cred, request_context, action).await?;
+        Ok(user)
+    }
+
+    /// Authenticate + authorize, returning (pubkey_hex, scope) on success.
+    async fn auth_with_scope(
+        &self,
+        cred: Option<&proto::Credential>,
+        request_context: &[u8],
+        action: &ActionCategory,
+    ) -> Result<(String, kith_common::policy::Scope), Status> {
         let (credential, hash) = Self::extract_credential(cred, request_context)?;
+
+        // Replay protection: reject duplicate signatures within the freshness window
+        {
+            let mut guard = self.replay_guard.lock().await;
+            if !guard.check_and_record(&credential.signature, credential.timestamp_unix_ms) {
+                return Err(Status::already_exists("credential replay detected"));
+            }
+        }
 
         match self.policy.evaluate(&credential, &hash, action) {
             Ok(PolicyDecision::Allow) => {
@@ -211,7 +282,11 @@ impl KithDaemonService {
                         .try_into()
                         .unwrap_or([0u8; 32]),
                 );
-                Ok(pubkey_hex)
+                let scope = self
+                    .policy
+                    .scope_for(&pubkey_hex)
+                    .unwrap_or(kith_common::policy::Scope::Viewer);
+                Ok((pubkey_hex, scope))
             }
             Ok(PolicyDecision::Deny { reason }) => Err(Status::permission_denied(reason)),
             Err(kith_common::error::KithError::CredentialsExpired) => {
@@ -234,21 +309,35 @@ impl KithDaemon for KithDaemonService {
         request: Request<proto::ExecRequest>,
     ) -> Result<Response<Self::ExecStream>, Status> {
         let req = request.into_inner();
-        let user = self.auth(
-            req.credential.as_ref(),
-            req.command.as_bytes(),
-            &ActionCategory::Exec,
-        )?;
+        let user = self
+            .auth(
+                req.credential.as_ref(),
+                req.command.as_bytes(),
+                &ActionCategory::Exec,
+            )
+            .await?;
 
         info!(user = %user, command = %req.command, "exec authorized");
 
         let command = req.command.clone();
         let audit = self.audit.clone();
         let _machine = self.machine_name.clone();
+        let semaphore = self.exec_semaphore.clone();
 
         let (tx, rx) = tokio::sync::mpsc::channel(32);
 
         tokio::spawn(async move {
+            let _permit = match semaphore.acquire().await {
+                Ok(p) => p,
+                Err(_) => {
+                    let _ = tx
+                        .send(Err(Status::resource_exhausted(
+                            "too many concurrent executions",
+                        )))
+                        .await;
+                    return;
+                }
+            };
             match exec::exec_command(&command).await {
                 Ok(result) => {
                     // Send stdout
@@ -309,7 +398,9 @@ impl KithDaemon for KithDaemonService {
         request: Request<proto::QueryRequest>,
     ) -> Result<Response<proto::StateResponse>, Status> {
         let req = request.into_inner();
-        let _user = self.auth(req.credential.as_ref(), b"query", &ActionCategory::Query)?;
+        let _user = self
+            .auth(req.credential.as_ref(), b"query", &ActionCategory::Query)
+            .await?;
 
         // Return basic state info
         let payload = serde_json::json!({
@@ -329,11 +420,13 @@ impl KithDaemon for KithDaemonService {
         request: Request<proto::ApplyRequest>,
     ) -> Result<Response<proto::PendingChange>, Status> {
         let req = request.into_inner();
-        let user = self.auth(
-            req.credential.as_ref(),
-            req.command.as_bytes(),
-            &ActionCategory::Apply,
-        )?;
+        let user = self
+            .auth(
+                req.credential.as_ref(),
+                req.command.as_bytes(),
+                &ActionCategory::Apply,
+            )
+            .await?;
 
         let duration = if req.commit_window_seconds > 0 {
             Some(Duration::from_secs(req.commit_window_seconds as u64))
@@ -368,11 +461,13 @@ impl KithDaemon for KithDaemonService {
         request: Request<proto::CommitRequest>,
     ) -> Result<Response<proto::CommitResult>, Status> {
         let req = request.into_inner();
-        let user = self.auth(
-            req.credential.as_ref(),
-            req.change_id.as_bytes(),
-            &ActionCategory::Commit,
-        )?;
+        let user = self
+            .auth(
+                req.credential.as_ref(),
+                req.change_id.as_bytes(),
+                &ActionCategory::Commit,
+            )
+            .await?;
 
         match self.commit_mgr.lock().await.commit(&req.change_id) {
             Ok(_) => {
@@ -399,11 +494,13 @@ impl KithDaemon for KithDaemonService {
         request: Request<proto::RollbackRequest>,
     ) -> Result<Response<proto::RollbackResult>, Status> {
         let req = request.into_inner();
-        let user = self.auth(
-            req.credential.as_ref(),
-            req.change_id.as_bytes(),
-            &ActionCategory::Rollback,
-        )?;
+        let user = self
+            .auth(
+                req.credential.as_ref(),
+                req.change_id.as_bytes(),
+                &ActionCategory::Rollback,
+            )
+            .await?;
 
         match self.commit_mgr.lock().await.rollback(&req.change_id) {
             Ok(_) => {
@@ -432,11 +529,21 @@ impl KithDaemon for KithDaemonService {
         request: Request<proto::EventsRequest>,
     ) -> Result<Response<Self::EventsStream>, Status> {
         let req = request.into_inner();
-        let _user = self.auth(req.credential.as_ref(), b"events", &ActionCategory::Events)?;
+        let (_user, scope) = self
+            .auth_with_scope(req.credential.as_ref(), b"events", &ActionCategory::Events)
+            .await?;
 
-        // Return audit log entries as events
+        // Return audit log entries filtered by caller's scope
         let audit = self.audit.lock().await;
-        let entries = audit.entries().to_vec();
+        let event_scope = match scope {
+            kith_common::policy::Scope::Ops => kith_common::event::EventScope::Ops,
+            kith_common::policy::Scope::Viewer => kith_common::event::EventScope::Public,
+        };
+        let entries: Vec<_> = audit
+            .entries_for_scope(&event_scope)
+            .into_iter()
+            .cloned()
+            .collect();
 
         let (tx, rx) = tokio::sync::mpsc::channel(32);
         tokio::spawn(async move {
@@ -465,11 +572,13 @@ impl KithDaemon for KithDaemonService {
         request: Request<proto::CapabilitiesRequest>,
     ) -> Result<Response<proto::CapabilityReport>, Status> {
         let req = request.into_inner();
-        let _user = self.auth(
-            req.credential.as_ref(),
-            b"capabilities",
-            &ActionCategory::Capabilities,
-        )?;
+        let _user = self
+            .auth(
+                req.credential.as_ref(),
+                b"capabilities",
+                &ActionCategory::Capabilities,
+            )
+            .await?;
 
         // Gather real system info
         let sys_info = sysinfo();
@@ -497,11 +606,13 @@ impl KithDaemon for KithDaemonService {
         request: Request<proto::ExchangeEventsRequest>,
     ) -> Result<Response<proto::ExchangeEventsResponse>, Status> {
         let req = request.into_inner();
-        let _user = self.auth(
-            req.credential.as_ref(),
-            b"exchange_events",
-            &ActionCategory::Events,
-        )?;
+        let (_user, scope) = self
+            .auth_with_scope(
+                req.credential.as_ref(),
+                b"exchange_events",
+                &ActionCategory::Events,
+            )
+            .await?;
 
         // Merge incoming events into our store
         let incoming: Vec<kith_common::event::Event> = req
@@ -525,12 +636,17 @@ impl KithDaemon for KithDaemonService {
             info!(merged, "sync: merged events from peer");
         }
 
-        // Return our events since their timestamp
+        // Return our events since their timestamp, filtered by caller's scope
         let since = req.since_timestamp_ms;
+        let event_scope = match scope {
+            kith_common::policy::Scope::Ops => None, // Ops sees everything
+            kith_common::policy::Scope::Viewer => Some(kith_common::event::EventScope::Public),
+        };
         let our_events: Vec<proto::Event> = self
             .event_store
             .query(&kith_sync::store::EventFilter {
                 since: chrono::DateTime::from_timestamp_millis(since),
+                scope: event_scope,
                 ..Default::default()
             })
             .await

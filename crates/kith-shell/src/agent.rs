@@ -293,11 +293,7 @@ impl Agent {
                         Err(e) => format!("error: {e}"),
                     }
                 } else {
-                    // No daemon connected — exec locally as fallback
-                    match kith_daemon::exec::exec_command(command).await {
-                        Ok(r) => r.stdout,
-                        Err(e) => format!("error: {e}"),
-                    }
+                    "error: no daemon connected — remote execution requires a daemon".into()
                 }
             }
             "fleet_query" => {
@@ -604,7 +600,8 @@ mod tests {
             AgentOutput::ToolResults(results) => {
                 assert_eq!(results.len(), 1);
                 assert_eq!(results[0].tool_name, "remote");
-                assert!(results[0].output.contains("tool-test"));
+                // Without a daemon, remote tool returns an error (no local fallback)
+                assert!(results[0].output.contains("no daemon connected"));
             }
             other => panic!("expected ToolResults, got {other:?}"),
         }
