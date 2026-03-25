@@ -1,5 +1,25 @@
 # Deployment
 
+## Install from Release
+
+Pre-built binaries are available on the [GitHub Releases](https://github.com/witlox/kith/releases) page:
+
+### Linux (shell + daemon)
+
+| Archive | Arch | Contents |
+|---------|------|----------|
+| [`kith-linux-x86_64.tar.gz`](https://github.com/witlox/kith/releases/latest/download/kith-linux-x86_64.tar.gz) | x86_64 | `kith` + `kith-daemon` (Nostr + WireGuard) |
+| [`kith-linux-aarch64.tar.gz`](https://github.com/witlox/kith/releases/latest/download/kith-linux-aarch64.tar.gz) | aarch64 | `kith` + `kith-daemon` (Nostr + WireGuard) |
+
+### macOS (shell only — connects to Linux daemons via gRPC)
+
+| Archive | Arch |
+|---------|------|
+| [`kith-macos-arm64.tar.gz`](https://github.com/witlox/kith/releases/latest/download/kith-macos-arm64.tar.gz) | Apple Silicon |
+| [`kith-macos-x86_64.tar.gz`](https://github.com/witlox/kith/releases/latest/download/kith-macos-x86_64.tar.gz) | Intel |
+
+Each archive includes a `.sha256` checksum file for verification.
+
 ## Docker
 
 Build the daemon image:
@@ -12,7 +32,7 @@ Run:
 
 ```bash
 docker run -d --name kith-daemon \
-  -p 50051:50051 \
+  -p 9443:9443 \
   -e RUST_LOG=info \
   kith-daemon
 ```
@@ -22,24 +42,39 @@ docker run -d --name kith-daemon \
 | Capability | Linux | macOS |
 |-----------|-------|-------|
 | kith shell | Yes | Yes |
-| kith-daemon | Full (cgroups, overlayfs, namespaces) | Agent-only (connect to mesh) |
+| kith-daemon | Full (cgroups, overlayfs, namespaces) | Not supported (agent-only) |
 | Containment | OverlayTransaction + CopyTransaction | CopyTransaction only |
 | WireGuard | Kernel module or userspace (boringtun) | Userspace only |
 
 ## Mesh Setup
 
-1. **Generate keypairs** on each machine: `kith --init`
-2. **Exchange public keys** and add to each daemon's policy file
-3. **Configure Nostr relays** in `config.toml` for peer discovery
-4. **Start daemons** — they will discover each other via Nostr and establish WireGuard tunnels
+1. **Install** kith on each machine (release binary or from source)
+2. **Initialize** keypairs on each machine: `kith --init`
+3. **Exchange public keys** — add each machine's pubkey to the daemon policy files
+4. **Configure** `~/.config/kith/config.toml` with Nostr relays and mesh identifier (see [Configuration](configuration.md))
+5. **Start daemons** on Linux machines: `RUST_LOG=info kith-daemon`
+6. **Connect** from any machine: `kith` — peers discover each other via Nostr and establish WireGuard tunnels automatically
 
-## Release Binaries
+## Systemd Service
 
-Pre-built binaries are available on the [GitHub Releases](https://github.com/witlox/kith/releases) page:
+```ini
+[Unit]
+Description=Kith Daemon
+After=network-online.target
+Wants=network-online.target
 
-| Archive | Arch | Contents |
-|---------|------|----------|
-| `kith-x86_64.tar.gz` | x86_64 | kith (shell), kith-daemon |
-| `kith-aarch64.tar.gz` | aarch64 | kith (shell), kith-daemon |
-| `kith-x86_64-full.tar.gz` | x86_64 | Both binaries with nostr + wireguard features |
-| `kith-aarch64-full.tar.gz` | aarch64 | Both binaries with nostr + wireguard features |
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/kith-daemon
+Environment=RUST_LOG=info
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo cp kith-daemon.service /etc/systemd/system/
+sudo systemctl enable --now kith-daemon
+```

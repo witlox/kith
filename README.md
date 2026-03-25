@@ -17,25 +17,31 @@ The Unix philosophy stays intact: standard tools, standard commands, standard pi
 ## Quick Start
 
 ```bash
-# Build
+# Install from release (Linux x86_64)
+curl -LO https://github.com/witlox/kith/releases/latest/download/kith-linux-x86_64.tar.gz
+tar xzf kith-linux-x86_64.tar.gz
+sudo mv kith kith-daemon /usr/local/bin/
+
+# Or build from source
 just release
-# or: cargo build --release -p kith-shell --bin kith && cargo build --release -p kith-daemon --bin kith-daemon
 
 # Initialize (generates keypair + default config)
-./target/release/kith --init
+kith --init
 
 # Start daemon on each machine
-RUST_LOG=info ./target/release/kith-daemon
+RUST_LOG=info kith-daemon
 
 # Start shell
-./target/release/kith
+kith
 
 # Or with a specific backend
-ANTHROPIC_API_KEY=sk-... ./target/release/kith --backend anthropic
+ANTHROPIC_API_KEY=sk-... kith --backend anthropic
 
 # Or single command
-./target/release/kith "summarize the git log for this week"
+kith "summarize the git log for this week"
 ```
+
+See [Releases](https://github.com/witlox/kith/releases) for all platforms (Linux x86_64/aarch64, macOS arm64/x86_64).
 
 Interactive usage:
 ```
