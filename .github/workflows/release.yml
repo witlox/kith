@@ -1,0 +1,187 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Weekly Monday 06:00 UTC
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  preflight:
+    name: Preflight checks
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
+      - name: Compute version
+        id: version
+        run: |
+          chmod +x scripts/set-version.sh
+          scripts/set-version.sh
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --exclude kith-acceptance
+      - run: cargo test -p kith-acceptance
+
+  # ---------------------------------------------------------------------------
+  # Build: arch × feature matrix
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build (${{ matrix.name }})
+    needs: preflight
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # --- x86_64 ---
+          - name: x86_64
+            target: x86_64-unknown-linux-gnu
+            features: ""
+            cross: false
+          - name: x86_64-full
+            target: x86_64-unknown-linux-gnu
+            features: nostr,wireguard
+            cross: false
+
+          # --- aarch64 ---
+          - name: aarch64
+            target: aarch64-unknown-linux-gnu
+            features: ""
+            cross: true
+          - name: aarch64-full
+            target: aarch64-unknown-linux-gnu
+            features: nostr,wireguard
+            cross: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: build-${{ matrix.name }}
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
+
+      - name: Install native build deps
+        if: ${{ !matrix.cross }}
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Install cross-compilation toolchain (aarch64)
+        if: matrix.cross
+        run: |
+          sudo dpkg --add-architecture arm64
+          [ -f /etc/apt/sources.list ] && sudo sed -i '/^deb \[/! s/^deb /deb [arch=amd64] /' /etc/apt/sources.list || true
+          for f in /etc/apt/sources.list.d/*.list; do
+            [ -f "$f" ] && sudo sed -i '/^deb \[/! s/^deb /deb [arch=amd64] /' "$f" || true
+          done
+          for f in /etc/apt/sources.list.d/*.sources; do
+            [ -f "$f" ] && grep -q '^Architectures:' "$f" || sudo sed -i '/^Types:/a Architectures: amd64' "$f" || true
+          done
+          echo 'deb [arch=arm64] http://ports.ubuntu.com/ noble main restricted universe' | sudo tee /etc/apt/sources.list.d/arm64.list
+          echo 'deb [arch=arm64] http://ports.ubuntu.com/ noble-updates main restricted universe' | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          echo 'deb [arch=arm64] http://ports.ubuntu.com/ noble-security main restricted universe' | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libssl-dev:arm64 pkg-config
+          echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
+          echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
+          echo "PKG_CONFIG_SYSROOT_DIR=/usr/aarch64-linux-gnu" >> $GITHUB_ENV
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=/usr/include/aarch64-linux-gnu" >> $GITHUB_ENV
+
+      - name: Set version
+        run: |
+          chmod +x scripts/set-version.sh
+          scripts/set-version.sh
+
+      - name: Build kith (shell)
+        run: cargo build --release --target ${{ matrix.target }} -p kith-shell --bin kith
+
+      - name: Build kith-daemon
+        run: >
+          cargo build --release --target ${{ matrix.target }}
+          -p kith-daemon --bin kith-daemon
+          ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
+
+      - name: Build kith-mesh (features)
+        if: matrix.features != ''
+        run: >
+          cargo build --release --target ${{ matrix.target }}
+          -p kith-mesh --features ${{ matrix.features }}
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/kith" dist/
+          cp "target/${{ matrix.target }}/release/kith-daemon" dist/
+          cd dist
+          tar czf "../kith-${{ matrix.name }}.tar.gz" *
+          cd ..
+          sha256sum "kith-${{ matrix.name }}.tar.gz" > "kith-${{ matrix.name }}.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kith-${{ matrix.name }}
+          path: |
+            kith-${{ matrix.name }}.tar.gz
+            kith-${{ matrix.name }}.tar.gz.sha256
+
+  # ---------------------------------------------------------------------------
+  # Publish: collect all artifacts into a GitHub release
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Publish release
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.preflight.outputs.version }}
+          name: kith v${{ needs.preflight.outputs.version }}
+          generate_release_notes: true
+          body: |
+            ## Binaries
+
+            Each archive contains `kith` (shell) and `kith-daemon`.
+
+            | Archive | Arch | Features |
+            |---------|------|----------|
+            | `kith-x86_64` | x86_64 | Core |
+            | `kith-x86_64-full` | x86_64 | Core + Nostr signaling + WireGuard mesh |
+            | `kith-aarch64` | aarch64 | Core |
+            | `kith-aarch64-full` | aarch64 | Core + Nostr signaling + WireGuard mesh |
+
+            ## Docker
+
+            ```bash
+            docker build -t kith-daemon .
+            ```
+          files: |
+            kith-*/kith-*.tar.gz
+            kith-*/kith-*.tar.gz.sha256

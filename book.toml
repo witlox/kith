@@ -1,0 +1,12 @@
+[book]
+title = "Kith Documentation"
+description = "Intent-driven distributed shell with LLM reasoning over a mesh of machines"
+authors = ["witlox"]
+language = "en"
+src = "docs"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/witlox/kith"
+edit-url-template = "https://github.com/witlox/kith/edit/main/{path}"

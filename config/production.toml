@@ -1,0 +1,26 @@
+# Production kith configuration — multi-machine mesh with hosted inference
+# Copy to ~/.config/kith/config.toml and adjust per machine
+
+[inference]
+backend = "anthropic"
+endpoint = "https://api.anthropic.com/v1"
+model = "claude-sonnet-4-20250514"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[embedding]
+backend = "api"
+endpoint = "http://gpu-server:8000/v1"
+model = "bge-small-en-v1.5"
+dimensions = 384
+api_key_env = "EMBEDDING_API_KEY"
+
+[mesh]
+identifier = "prod-mesh-2026"
+wireguard_interface = "kith0"
+listen_port = 51820
+mesh_cidr = "kith-mesh"
+nostr_relays = [
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://relay.nostr.band",
+]

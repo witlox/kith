@@ -1934,7 +1934,7 @@ dependencies = [
 
 [[package]]
 name = "kith-acceptance"
-version = "0.1.0"
+version = "2026.1.0"
 dependencies = [
  "chrono",
  "cucumber",
@@ -1952,7 +1952,7 @@ dependencies = [
 
 [[package]]
 name = "kith-common"
-version = "0.1.0"
+version = "2026.1.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1970,7 +1970,7 @@ dependencies = [
 
 [[package]]
 name = "kith-daemon"
-version = "0.1.0"
+version = "2026.1.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1995,7 +1995,7 @@ dependencies = [
 
 [[package]]
 name = "kith-e2e"
-version = "0.1.0"
+version = "2026.1.0"
 dependencies = [
  "chrono",
  "futures",
@@ -2017,7 +2017,7 @@ dependencies = [
 
 [[package]]
 name = "kith-mesh"
-version = "0.1.0"
+version = "2026.1.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2034,7 +2034,7 @@ dependencies = [
 
 [[package]]
 name = "kith-shell"
-version = "0.1.0"
+version = "2026.1.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2061,7 +2061,7 @@ dependencies = [
 
 [[package]]
 name = "kith-state"
-version = "0.1.0"
+version = "2026.1.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2075,7 +2075,7 @@ dependencies = [
 
 [[package]]
 name = "kith-sync"
-version = "0.1.0"
+version = "2026.1.0"
 dependencies = [
  "chrono",
  "kith-common",

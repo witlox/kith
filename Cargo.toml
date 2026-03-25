@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "2026.1.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/witlox/kith"
@@ -37,6 +37,11 @@ cucumber = "0.21"
 toml = "0.8"
 nix = { version = "0.29", features = ["process", "fs", "term", "poll", "signal"] }
 rustyline = "15"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
 
 [workspace.lints.clippy]
 field_reassign_with_default = "allow"

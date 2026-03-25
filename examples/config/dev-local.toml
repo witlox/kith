@@ -1,0 +1,10 @@
+# Development: local Ollama, no mesh, bag-of-words embeddings
+# For single-machine development and testing
+
+[inference]
+backend = "openai-compatible"
+endpoint = "http://localhost:11434/v1"
+model = "qwen3-coder"
+
+[embedding]
+backend = "bag-of-words"

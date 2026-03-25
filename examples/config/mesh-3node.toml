@@ -1,0 +1,24 @@
+# Three-node mesh configuration
+# Each machine gets this config with its own keypair from `kith --init`
+
+[inference]
+backend = "anthropic"
+endpoint = "https://api.anthropic.com/v1"
+model = "claude-sonnet-4-20250514"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[embedding]
+backend = "api"
+endpoint = "http://gpu-node:8000/v1"
+model = "bge-small-en-v1.5"
+dimensions = 384
+
+[mesh]
+identifier = "team-mesh"
+wireguard_interface = "kith0"
+listen_port = 51820
+mesh_cidr = "kith-mesh"
+nostr_relays = [
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+]

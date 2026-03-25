@@ -1,0 +1,11 @@
+# Hosted inference via Anthropic Claude API
+# Requires: ANTHROPIC_API_KEY environment variable
+
+[inference]
+backend = "anthropic"
+endpoint = "https://api.anthropic.com/v1"
+model = "claude-sonnet-4-20250514"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[embedding]
+backend = "bag-of-words"

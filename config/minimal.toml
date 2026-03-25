@@ -1,0 +1,10 @@
+# Minimal kith configuration — single machine, local inference
+# Copy to ~/.config/kith/config.toml
+
+[inference]
+backend = "openai-compatible"
+endpoint = "http://localhost:11434/v1"    # Ollama default
+model = "qwen3-coder"
+
+[embedding]
+backend = "bag-of-words"                  # Local, no GPU needed

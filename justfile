@@ -10,6 +10,10 @@ check: fmt clippy test
 fmt:
     cargo fmt --all -- --check
 
+# Format fix
+fmt-fix:
+    cargo fmt --all
+
 # Lint
 clippy:
     cargo clippy --workspace --all-targets -- -D warnings
@@ -54,3 +58,24 @@ build-full:
 # Build docker image
 docker:
     docker build -t kith-daemon .
+
+# Build documentation (mdbook)
+doc:
+    mdbook build
+
+# Serve documentation locally (with live reload)
+doc-serve:
+    mdbook serve --open
+
+# Generate rustdoc
+rustdoc:
+    cargo doc --workspace --no-deps --document-private-items
+
+# Compute release version (dry run)
+version:
+    ./scripts/set-version.sh --dry-run
+
+# Clean build artifacts
+clean:
+    cargo clean
+    rm -rf book/
